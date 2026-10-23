@@ -131,7 +131,11 @@ with st.sidebar:
             try:
                 with httpx.Client(timeout=10.0) as client:
                     resp = client.post(GATEWAY_URL, json={"prompt": prompt})
-                st.session_state["last_result"] = (resp.status_code, resp.json())
+                try:
+                    payload = resp.json()
+                except Exception:
+                    payload = {"response": resp.text}
+                st.session_state["last_result"] = (resp.status_code, payload)
             except Exception as exc:
                 st.session_state["last_result"] = (None, str(exc))
 
@@ -140,11 +144,20 @@ with st.sidebar:
         code, body = result
         if code == 200:
             st.caption("Sonuç: 200 — onaylandı")
+            st.json(body, expanded=False)
         elif code == 403:
             st.caption("Sonuç: 403 — engellendi")
+            st.json(body, expanded=False)
+        elif code is not None:
+            st.caption(f"Sonuç: {code}")
+            if isinstance(body, (dict, list)):
+                st.json(body, expanded=False)
+            else:
+                st.text(str(body))
         else:
-            st.caption(f"Sonuç: {code or 'bağlantı hatası'}")
-        st.json(body, expanded=False)
+            st.error("Gateway'e bağlanılamadı (port 8000 kapalı).")
+            with st.expander("Hata detayı", expanded=False):
+                st.caption(str(body))
 
     st.markdown('<div class="side-title" style="margin-top:2rem">Veri</div>', unsafe_allow_html=True)
     if st.button("Yenile", use_container_width=True):
