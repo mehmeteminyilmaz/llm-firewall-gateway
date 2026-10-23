@@ -7,6 +7,7 @@ from app.guards.pii_guard import PIIGuard
 from app.guards.injection_guard import InjectionGuard
 from app.services.llm_service import LLMService
 from app.core.vault import vault_store
+from app.core.db import log_request
 
 router = APIRouter(tags=["LLM Secure Proxy"])
 
@@ -41,10 +42,11 @@ class ChatResponse(BaseModel):
 @router.post("/v1/chat/secure", response_model=ChatResponse)
 async def secure_chat(req: ChatRequest):
     """
-    1. Inbound Guard: Prompt Injection & Jailbreak Tehdit Taraması (403 Forbidden)
-    2. Outbound Guard: PII Maskeleme & Memory Vault Oturumu
-    3. Asenkron LLM Servisi: Maskelenmiş verinin iletimi ve token takibi
-    4. Outbound Unmasking: Vault'tan tek seferlik okuma ve bellek temizliği (Zero-Leakage)
+    1. Inbound Guard: Prompt Injection & Jailbreak Tehdit Taraması (403 Forbidden & Audit Log)
+    2. Outbound Guard: PII Maskeleme & Zero-Leakage Memory Vault Oturumu
+    3. Asenkron LLM İletişimi: Güvenli veri iletimi ve token takibi
+    4. Outbound Unmasking: Tek kullanımlık kasa çözümü ve otomatik imha
+    5. Telemetri: SQLite audit_logs tablosuna asenkron metrik kaydı
     """
     request_start = time.perf_counter()
 
@@ -52,6 +54,9 @@ async def secure_chat(req: ChatRequest):
     is_blocked, threat_score, reasons = injection_guard.scan(req.prompt)
     if is_blocked:
         overhead_ms = round((time.perf_counter() - request_start) * 1000, 2)
+        # Tehditi veritabanına logla
+        log_request("BLOCKED", threat_score, 0, overhead_ms, 0.0, 0)
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -67,6 +72,7 @@ async def secure_chat(req: ChatRequest):
     pii_start = time.perf_counter()
     masked_prompt, mapping = pii_guard.mask(req.prompt)
     pii_latency_ms = round((time.perf_counter() - pii_start) * 1000, 2)
+    pii_count = len(mapping)
 
     # Hassas eşlemeyi sunucu kasasında sakla (istemciye sızdırılmaz)
     vault_id = vault_store.store(mapping)
@@ -82,18 +88,22 @@ async def secure_chat(req: ChatRequest):
 
     total_latency_ms = round((time.perf_counter() - request_start) * 1000, 2)
     gateway_overhead_ms = round(total_latency_ms - llm_latency_ms, 2)
+    total_tokens = llm_result["total_tokens"]
+
+    # Başarılı isteği veritabanına logla
+    log_request("SUCCESS", threat_score, pii_count, gateway_overhead_ms, llm_latency_ms, total_tokens)
 
     return ChatResponse(
         status="SUCCESS",
         threat_score=threat_score,
-        pii_detected_count=len(cached_mapping),
+        pii_detected_count=pii_count,
         gateway_overhead_ms=gateway_overhead_ms,
         llm_latency_ms=llm_latency_ms,
         total_latency_ms=total_latency_ms,
         tokens=TokenUsage(
             prompt_tokens=llm_result["prompt_tokens"],
             completion_tokens=llm_result["completion_tokens"],
-            total_tokens=llm_result["total_tokens"]
+            total_tokens=total_tokens
         ),
         response=final_output
     )

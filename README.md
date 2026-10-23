@@ -153,8 +153,11 @@ flowchart TB
   - Asenkron HTTPX LLM istemcisi ve fallback simülasyonu
   - Token tüketim sayacı (`prompt_tokens`, `completion_tokens`, `total_tokens`)
   - Gecikme ayrıştırması (`gateway_overhead_ms` vs `llm_latency_ms`)
-- [ ] **Faz 4: LLMOps SOC Dashboard ve Benchmark Testleri**
-  - Streamlit / Web tabanlı güvenlik ve metrik izleme paneli
+- [x] **Faz 4a: LLMOps SOC Dashboard ve Audit Logging**
+  - SQLite tabanlı denetim logu (`audit_logs`) — prompt içeriği kaydedilmez, yalnızca metrikler
+  - Streamlit SOC paneli: KPI kartları, güvenlik dağılımı, gecikme, tehdit skoru ve PII/token grafikleri
+  - Panel üzerinden canlı saldırı/meşru istek gönderme
+- [ ] **Faz 4b: Benchmark Testleri**
   - JailbreakBench ve InfiBench üzerinde akademik başarı (F1, Precision, Recall) ölçümleri
 
 ---
@@ -186,6 +189,18 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Swagger API Arayüzü: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### SOC Dashboard'u Başlatma (ikinci terminalde)
+
+```bash
+# İsteğe bağlı: örnek trafik üret (5 meşru + 5 saldırı isteği)
+python generate_traffic.py
+
+# Paneli başlat
+python -m streamlit run dashboard.py
+```
+
+Panel: [http://localhost:8501](http://localhost:8501)
 
 ---
 

@@ -8,14 +8,20 @@ from app.guards.pii_guard import PIIGuard
 from app.guards.injection_guard import InjectionGuard
 from app.services.llm_service import LLMService
 from app.core.vault import vault_store
+from app.core.db import init_db, log_request
 from app.api.proxy import router as proxy_router
 from app.core.config import settings
 
 app = FastAPI(
     title="Enterprise LLM Guardrail & Gateway",
-    description="Faz 3: Asenkron LLM Servisi, Gerçek Hedef Entegrasyonu ve Vault Cache",
-    version="0.3.0"
+    description="Faz 4: LLMOps SOC Dashboard ve Audit Logging Destekli Kurumsal Güvenlik Ağ Geçidi",
+    version="0.4.0"
 )
+
+# Uygulama başlarken SQLite veritabanını ve audit_logs tablosunu hazırla
+@app.on_event("startup")
+def startup_event():
+    init_db()
 
 # UTF-8 Charset Middleware (Türkçe karakterlerin ve JSON çıktılarının bozulmaması için)
 @app.middleware("http")
@@ -43,7 +49,7 @@ class ChatRequest(BaseModel):
 async def root():
     return {
         "service": "Enterprise LLM Guardrail & Gateway",
-        "phase": "Faz 3 - Async LLM Service, Target Integration & Zero-Leakage Vault",
+        "phase": "Faz 4 - Full LLMOps SOC Observability & Security Gateway",
         "status": "online",
         "endpoints": {
             "secure_chat": "/v1/chat/secure",

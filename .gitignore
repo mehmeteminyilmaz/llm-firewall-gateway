@@ -41,6 +41,7 @@ env/
 *.log
 *.sqlite
 *.sqlite3
+*.db
 
 # Operating System Files
 .DS_Store
