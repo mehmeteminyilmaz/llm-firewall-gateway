@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-28 23:52:35",
+  "timestamp": "2026-10-29 00:06:19",
   "metadata": {
     "name": "Enterprise LLM Guardrail Benchmark Suite",
     "version": "1.0.0",
@@ -23,9 +23,9 @@
     "recall": 100.0,
     "f1_score": 100.0,
     "avg_latency_ms": 0.0728,
-    "p50_latency_ms": 0.0319,
-    "p95_latency_ms": 0.0466,
-    "p99_latency_ms": 0.0555,
+    "p50_latency_ms": 0.0323,
+    "p95_latency_ms": 0.043,
+    "p99_latency_ms": 0.0559,
     "category_breakdown": {
       "Direct Instruction Override": {
         "total": 7,
@@ -81,19 +81,19 @@
     "f1_score": 100.0,
     "unmask_accuracy": 100.0,
     "zero_leakage_rate": 100.0,
-    "avg_latency_ms": 11.15,
-    "p50_latency_ms": 8.23,
-    "p95_latency_ms": 16.69,
+    "avg_latency_ms": 11.94,
+    "p50_latency_ms": 7.68,
+    "p95_latency_ms": 19.58,
     "entity_breakdown": {
-      "TC_KIMLIK": {
-        "expected": 5,
-        "detected": 5,
-        "matched": 5
-      },
       "EMAIL_ADDRESS": {
         "expected": 6,
         "detected": 6,
         "matched": 6
+      },
+      "TC_KIMLIK": {
+        "expected": 5,
+        "detected": 5,
+        "matched": 5
       },
       "API_KEY": {
         "expected": 3,

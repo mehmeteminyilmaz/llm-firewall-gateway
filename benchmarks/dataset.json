@@ -388,17 +388,17 @@
     },
     {
       "id": "PII-004",
-      "prompt": "GitHub entegrasyon tokenı ghp_1234567890abcdefghijklmnopqrstuvwxyz sızdırılmış olabilir, lütfen security@company.org adresine bildirin.",
+      "prompt": "Kurumsal entegrasyon anahtarı sk-proj-00000000000000000000000000000000 sızdırılmış olabilir, lütfen security@company.org adresine bildirin.",
       "expected_entities": {
-        "API_KEY": ["ghp_1234567890abcdefghijklmnopqrstuvwxyz"],
+        "API_KEY": ["sk-proj-00000000000000000000000000000000"],
         "EMAIL_ADDRESS": ["security@company.org"]
       }
     },
     {
       "id": "PII-005",
-      "prompt": "Google Cloud servis anahtarı AIzaSyDaGmWKa4JsXZ-0123456789abcdefghij ve sorumlu personel TC 23456789012 kaydını kontrol edin.",
+      "prompt": "Bulut servis anahtarı sk-test-11111111111111111111111111111111 ve sorumlu personel TC 23456789012 kaydını kontrol edin.",
       "expected_entities": {
-        "API_KEY": ["AIzaSyDaGmWKa4JsXZ-0123456789abcdefghij"],
+        "API_KEY": ["sk-test-11111111111111111111111111111111"],
         "TC_KIMLIK": ["23456789012"]
       }
     },

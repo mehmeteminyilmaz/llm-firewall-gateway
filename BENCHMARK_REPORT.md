@@ -1,6 +1,6 @@
 # Akademik Benchmark ve Performans Değerlendirme Raporu (Faz 4b)
 
-> **Oluşturulma Tarihi:** `2026-10-28 23:52:35`  
+> **Oluşturulma Tarihi:** `2026-10-29 00:06:19`  
 > **Veri Seti:** `Enterprise LLM Guardrail Benchmark Suite (v1.0.0)`
 
 ---
@@ -13,8 +13,8 @@
 | **Inbound Guard Kesinlik / Duyarlılık** (Precision / Recall) | **%100.0 / %100.0** | $> \%95.0$ | BAŞARILI |
 | **Outbound Guard PII Maskeleme F1-Skoru** | **%100.0** | $\%100.0$ | BAŞARILI |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | **%100.0 / %100.0** | $\%100.0$ | BAŞARILI |
-| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0728 ms / 0.0466 ms** | $< 5\text{ ms}$ | BAŞARILI |
-| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **11.15 ms / 16.69 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
+| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0728 ms / 0.043 ms** | $< 5\text{ ms}$ | BAŞARILI |
+| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **11.94 ms / 19.58 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
 
 ---
 
@@ -60,8 +60,8 @@ Kurumsal senaryoları temsil eden **8 sentetik test vakası** ve toplam **16 has
 
 | Varlık Türü (Entity) | Beklenen | Tespit Edilen | Doğru Eşleşen (TP) | Duyarlılık (Recall) |
 |---|---|---|---|---|
-| `TC_KIMLIK` | 5 | 5 | 5 | **%100.0** |
 | `EMAIL_ADDRESS` | 6 | 6 | 6 | **%100.0** |
+| `TC_KIMLIK` | 5 | 5 | 5 | **%100.0** |
 | `API_KEY` | 3 | 3 | 3 | **%100.0** |
 | `PHONE_NUMBER` | 2 | 2 | 2 | **%100.0** |
 
@@ -77,5 +77,5 @@ Kurumsal senaryoları temsil eden **8 sentetik test vakası** ve toplam **16 has
 
 | Katman | Ortalama (Mean) | Medyan (P50) | P95 Gecikme | SLA Hedefi |
 |---|---|---|---|---|
-| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0728 ms` | `0.0319 ms` | `0.0466 ms` | `< 5.0 ms` |
-| **Outbound Guard (Presidio NER + Regex + Vault)** | `11.15 ms` | `8.23 ms` | `16.69 ms` | `< 50.0 ms` |
+| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0728 ms` | `0.0323 ms` | `0.043 ms` | `< 5.0 ms` |
+| **Outbound Guard (Presidio NER + Regex + Vault)** | `11.94 ms` | `7.68 ms` | `19.58 ms` | `< 50.0 ms` |
