@@ -4,7 +4,7 @@ from app.core.vault import vault_store
 from app.guards.pii_guard import PIIGuard
 
 
-def run_phase5_tests():
+def test_phase5_enterprise_features():
     print("=== FAZ 5 TESTİ: OPENAI DROP-IN PROXY, MALİYET, PII TÜR DAĞILIMI VE RATE LIMIT ===")
     vault_store.reset_rate_limits()
     client = TestClient(app)
@@ -64,4 +64,5 @@ def run_phase5_tests():
 
 
 if __name__ == "__main__":
-    run_phase5_tests()
+    test_phase5_enterprise_features()
+

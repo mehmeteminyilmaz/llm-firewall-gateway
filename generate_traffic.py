@@ -15,7 +15,7 @@ client = TestClient(app)
 sample_requests = [
     # 1. Başarılı İstekler (PII İçeren)
     {
-        "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
+        "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
         "expected": 200
     },
     {
@@ -23,7 +23,7 @@ sample_requests = [
         "expected": 200
     },
     {
-        "prompt": "VIP müşteri Ali Can'ın telefon numarası +905321112233 ve T.C. kimliği 11223344556. Destek kaydı oluştur.",
+        "prompt": "VIP müşteri Ali Can'ın telefon numarası +905321112233 ve T.C. kimliği 11223344550. Destek kaydı oluştur.",
         "expected": 200
     },
     {

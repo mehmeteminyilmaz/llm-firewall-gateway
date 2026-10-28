@@ -2,7 +2,7 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $postData = @{
-    prompt = "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla."
+    prompt = "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla."
     model = "gpt-3.5-turbo"
 } | ConvertTo-Json
 

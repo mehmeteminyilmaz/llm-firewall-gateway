@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   gateway:
     build: .
@@ -8,9 +6,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./llmops.db:/app/llmops.db
+      - guardrail_data:/app/data
     environment:
-      - SQLITE_DB_PATH=/app/llmops.db
+      - SQLITE_DB_PATH=/app/data/llmops.db
+      - HOST=0.0.0.0
+      - PORT=8000
 
   dashboard:
     build: .
@@ -19,6 +19,12 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./llmops.db:/app/llmops.db
+      - guardrail_data:/app/data
+    environment:
+      - SQLITE_DB_PATH=/app/data/llmops.db
+      - GATEWAY_URL=http://gateway:8000
     depends_on:
       - gateway
+
+volumes:
+  guardrail_data:

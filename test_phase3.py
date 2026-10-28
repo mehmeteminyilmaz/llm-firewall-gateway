@@ -10,7 +10,7 @@ def test_phase3_flow():
 
     # 1. Meşru İstek (PII içeren kurumsal prompt)
     payload = {
-        "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
+        "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
         "model": "gpt-3.5-turbo"
     }
 
@@ -45,7 +45,7 @@ def test_phase3_flow():
     assert "total_latency_ms" in data
 
     # F) Yanıt unmask edilmiş olmalı (Ayşe Hanım'ın TC ve e-postası geri açılmış olmalı)
-    assert "98765432109" in data["response"], "HATA: T.C. Kimlik unmask edilemedi!"
+    assert "98765432150" in data["response"], "HATA: T.C. Kimlik unmask edilemedi!"
     assert "ayse@kurum.com" in data["response"], "HATA: E-posta unmask edilemedi!"
 
     # G) Zero-Leakage: Vault temizlenmiş olmalı

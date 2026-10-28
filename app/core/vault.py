@@ -2,6 +2,8 @@ import time
 import uuid
 from typing import Dict, List, Optional, Tuple
 
+from app.core.config import settings
+
 
 class MemoryVault:
     """
@@ -50,6 +52,12 @@ class MemoryVault:
         valid_timestamps.append(now)
         self._rate_buckets[client_id] = valid_timestamps
         remaining = max(0, self.rate_limit_requests - len(valid_timestamps))
+
+        # Bellek şişmesini önlemek için pasif istemcilerin kovalarını periyodik temizle
+        if len(self._rate_buckets) > 10_000:
+            self._rate_buckets = {
+                cid: ts for cid, ts in self._rate_buckets.items() if ts and ts[-1] > window_start
+            }
         return True, remaining
 
     def reset_rate_limits(self) -> None:
@@ -57,4 +65,7 @@ class MemoryVault:
         self._rate_buckets.clear()
 
 
-vault_store = MemoryVault()
+vault_store = MemoryVault(
+    rate_limit_requests=settings.RATE_LIMIT_REQUESTS,
+    rate_limit_window_sec=settings.RATE_LIMIT_WINDOW_SEC,
+)

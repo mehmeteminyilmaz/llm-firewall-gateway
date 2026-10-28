@@ -3,7 +3,7 @@ from app.main import app
 from app.guards.injection_guard import InjectionGuard
 
 
-def run_phase2_tests():
+def test_phase2_inbound_guard():
     print("=== FAZ 2: INBOUND GUARD (PROMPT INJECTION & JAILBREAK) TESTİ ===")
     guard = InjectionGuard(threshold=0.70)
 
@@ -56,7 +56,7 @@ def run_phase2_tests():
 
     # C) Güvenli İstek (PII İçeren Meşru Kullanıcı)
     safe_payload = {
-        "prompt": "Müşterinin T.C. Kimlik numarası 12345678901. Hoş geldin mesajı üret."
+        "prompt": "Müşterinin T.C. Kimlik numarası 12345678950. Hoş geldin mesajı üret."
     }
     resp_safe = client.post("/v1/chat/secure", json=safe_payload)
     print(f"\nGüvenli İstek Yanıt Kodu: {resp_safe.status_code}")
@@ -69,4 +69,4 @@ def run_phase2_tests():
 
 
 if __name__ == "__main__":
-    run_phase2_tests()
+    test_phase2_inbound_guard()

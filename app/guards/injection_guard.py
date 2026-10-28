@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Tuple, List, Dict, Any
 
 
@@ -16,7 +17,7 @@ class InjectionGuard:
         # 1. Bilinen kritik jailbreak ve injection kalıpları (Regex tabanlı katman)
         self.heuristic_patterns: List[Dict[str, Any]] = [
             {
-                "pattern": r"(?i)(ignore|disregard|forget|override|bypass)\s+(all\s+)?(previous|prior|above|initial|system|safety)\s+(instructions|prompts|rules|guidelines|constraints)",
+                "pattern": r"(?i)(ignore|disregard|forget|override|bypass)\s+(all\s+|every\s+|any\s+|the\s+)?(of\s+)?(your\s+|the\s+)?(previous|prior|above|earlier|initial|system|safety)\s+(instructions?|prompts?|rules?|guidelines?|constraints?)",
                 "weight": 0.85,
                 "reason": "Direct instruction override attempt"
             },
@@ -67,6 +68,25 @@ class InjectionGuard:
             }
         ]
 
+        # Regex'leri bir kez derle (her istekte yeniden derleme maliyetini önler)
+        for item in self.heuristic_patterns:
+            item["compiled"] = re.compile(item["pattern"])
+
+    # Görünmez / sıfır genişlikli karakterler (ör. "I\u200bgnore" ile filtre atlatma girişimleri)
+    _INVISIBLE_CHARS = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\u00ad]")
+
+    @classmethod
+    def normalize(cls, text: str) -> str:
+        """
+        Obfuscation (gizleme) tabanlı atlatma girişimlerine karşı metni normalize eder:
+        - NFKC: tam genişlikli / stilize Unicode harfleri (ör. 'Ｉｇｎｏｒｅ') ASCII karşılığına çevirir
+        - Sıfır genişlikli ve yön kontrol karakterlerini siler
+        - Ardışık boşlukları tek boşluğa indirger
+        """
+        text = unicodedata.normalize("NFKC", text)
+        text = cls._INVISIBLE_CHARS.sub("", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     def scan(self, text: str) -> Tuple[bool, float, List[str]]:
         """
         Gelen metni analiz eder.
@@ -75,12 +95,13 @@ class InjectionGuard:
         if not text:
             return False, 0.0, []
 
+        text = self.normalize(text)
         reasons = []
         threat_score = 0.0
 
         # Heuristic analiz
         for item in self.heuristic_patterns:
-            if re.search(item["pattern"], text):
+            if item["compiled"].search(text):
                 threat_score = max(threat_score, item["weight"])
                 reasons.append(item["reason"])
 

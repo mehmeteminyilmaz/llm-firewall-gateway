@@ -5,7 +5,7 @@ import uvicorn
 
 from app.core.vault import vault_store
 from app.core.db import init_db
-from app.api.proxy import router as proxy_router
+from app.api.proxy import router as proxy_router, llm_service
 from app.core.config import settings
 
 
@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Enterprise LLM Guardrail & Gateway",
-    description="Faz 5: OpenAI SDK Uyumlu, Rate-Limited, Maliyet & PII Analitik Destekli Kurumsal Güvenlik Ağ Geçidi",
-    version="1.0.0",
+    description="OpenAI SDK uyumlu, rate-limited, maliyet & PII analitik destekli kurumsal LLM güvenlik ağ geçidi",
+    version=settings.VERSION,
     lifespan=lifespan,
 )
 
@@ -41,9 +41,8 @@ app.include_router(proxy_router)
 @app.get("/")
 async def root():
     return {
-        "service": "Enterprise LLM Guardrail & Gateway",
-        "version": "1.0.0",
-        "phase": "Faz 5 - Enterprise Hardening, OpenAI Drop-in Proxy & Full LLMOps Observability",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
         "status": "online",
         "endpoints": {
             "secure_chat": "/v1/chat/secure",
@@ -58,6 +57,9 @@ async def root():
 async def health():
     return {
         "status": "healthy",
+        "version": settings.VERSION,
+        "llm_mode": llm_service.mode,
+        "auth_enabled": bool(settings.GATEWAY_API_KEYS),
         "active_vault_sessions": vault_store.size(),
         "rate_limit_window_sec": vault_store.rate_limit_window_sec,
         "rate_limit_max_requests": vault_store.rate_limit_requests,

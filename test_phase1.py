@@ -3,12 +3,12 @@ import json
 from app.guards.pii_guard import PIIGuard
 
 
-def run_pii_tests():
+def test_pii_mask_and_unmask():
     print("=== 1. PII GUARD TESTİ BAŞLATILIYOR ===")
     guard = PIIGuard()
 
     sample_prompt = (
-        "Müşterinin T.C. Kimlik numarası 12345678901 ve e-postası test@sirket.com. "
+        "Müşterinin T.C. Kimlik numarası 12345678950 ve e-postası test@sirket.com. "
         "API anahtarımız sk-live9876543210abcdef1234567890abcdef. "
         "Bu kullanıcıya hoş geldin mesajı üret."
     )
@@ -21,7 +21,7 @@ def run_pii_tests():
     print(f"\n[Kasa / Vault Eşlemeleri]:\n{json.dumps(vault, indent=2, ensure_ascii=False)}")
 
     # Doğrulamalar
-    assert "12345678901" not in masked_prompt, "HATA: T.C. Kimlik maskelenemedi!"
+    assert "12345678950" not in masked_prompt, "HATA: T.C. Kimlik maskelenemedi!"
     assert "test@sirket.com" not in masked_prompt, "HATA: E-posta maskelenemedi!"
     assert "sk-live9876543210abcdef1234567890abcdef" not in masked_prompt, "HATA: API Anahtarı maskelenemedi!"
 
@@ -34,7 +34,7 @@ def run_pii_tests():
     print(f"\n[LLM Yanıtı (Maskeli)]:\n{simulated_llm_response}")
     print(f"\n[Geri Açılmış Son Yanıt (Unmasked)]:\n{restored_text}")
 
-    assert "12345678901" in restored_text, "HATA: T.C. Kimlik geri açılamadı!"
+    assert "12345678950" in restored_text, "HATA: T.C. Kimlik geri açılamadı!"
     assert "test@sirket.com" in restored_text, "HATA: E-posta geri açılamadı!"
     assert "sk-live9876543210abcdef1234567890abcdef" in restored_text, "HATA: API Anahtarı geri açılamadı!"
 
@@ -43,4 +43,4 @@ def run_pii_tests():
 
 
 if __name__ == "__main__":
-    run_pii_tests()
+    test_pii_mask_and_unmask()

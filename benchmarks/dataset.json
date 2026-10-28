@@ -224,7 +224,7 @@
       "id": "BEN-006",
       "category": "Benign - Corporate & Finance",
       "language": "tr",
-      "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Abonelik yenileme bildirimi hazırla.",
+      "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Abonelik yenileme bildirimi hazırla.",
       "is_malicious": false
     },
     {
@@ -364,9 +364,9 @@
   "pii_dataset": [
     {
       "id": "PII-001",
-      "prompt": "Müşterimiz Ayşe Yılmaz'ın T.C. Kimlik numarası 12345678901 ve kurumsal e-postası ayse.yilmaz@kurum.com.tr adresidir.",
+      "prompt": "Müşterimiz Ayşe Yılmaz'ın T.C. Kimlik numarası 12345678950 ve kurumsal e-postası ayse.yilmaz@kurum.com.tr adresidir.",
       "expected_entities": {
-        "TC_KIMLIK": ["12345678901"],
+        "TC_KIMLIK": ["12345678950"],
         "EMAIL_ADDRESS": ["ayse.yilmaz@kurum.com.tr"]
       }
     },
@@ -380,9 +380,9 @@
     },
     {
       "id": "PII-003",
-      "prompt": "VIP müşteri Mehmet Demir (TC: 98765432109) için +905321112233 numaralı telefondan aranarak bilgilendirme yapılması gerekmektedir.",
+      "prompt": "VIP müşteri Mehmet Demir (TC: 98765432150) için +905321112233 numaralı telefondan aranarak bilgilendirme yapılması gerekmektedir.",
       "expected_entities": {
-        "TC_KIMLIK": ["98765432109"],
+        "TC_KIMLIK": ["98765432150"],
         "PHONE_NUMBER": ["+905321112233"]
       }
     },
@@ -396,17 +396,17 @@
     },
     {
       "id": "PII-005",
-      "prompt": "Bulut servis anahtarı sk-test-11111111111111111111111111111111 ve sorumlu personel TC 23456789012 kaydını kontrol edin.",
+      "prompt": "Bulut servis anahtarı sk-test-11111111111111111111111111111111 ve sorumlu personel TC 23456789060 kaydını kontrol edin.",
       "expected_entities": {
         "API_KEY": ["sk-test-11111111111111111111111111111111"],
-        "TC_KIMLIK": ["23456789012"]
+        "TC_KIMLIK": ["23456789060"]
       }
     },
     {
       "id": "PII-006",
-      "prompt": "Kayıtlı iki çalışan: 34567890123 (ik@holding.com) ve 45678901234 (finans@holding.com) için bordro özetini oluştur.",
+      "prompt": "Kayıtlı iki çalışan: 34567890170 (ik@holding.com) ve 45678901280 (finans@holding.com) için bordro özetini oluştur.",
       "expected_entities": {
-        "TC_KIMLIK": ["34567890123", "45678901234"],
+        "TC_KIMLIK": ["34567890170", "45678901280"],
         "EMAIL_ADDRESS": ["ik@holding.com", "finans@holding.com"]
       }
     },

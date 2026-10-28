@@ -231,7 +231,7 @@ SOC Paneli: [http://localhost:8501](http://localhost:8501)
 **İstek:**
 ```json
 {
-  "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
+  "prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla.",
   "model": "gpt-4o"
 }
 ```
@@ -255,7 +255,7 @@ SOC Paneli: [http://localhost:8501](http://localhost:8501)
     "completion_tokens": 12,
     "total_tokens": 28
   },
-  "response": "Sistem güvenli yanıtı: Talebiniz işlendi. Referans: Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432109 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla."
+  "response": "Sistem güvenli yanıtı: Talebiniz işlendi. Referans: Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla."
 }
 ```
 
@@ -361,10 +361,12 @@ llm-firewall-gateway/
 ├── .gitignore                 # Güvenlik ve geçici dosya kuralları
 ├── send_request.ps1           # Canlı PowerShell meşru istek betiği
 ├── test_attack.ps1            # Canlı PowerShell saldırı simülasyon betiği
+├── conftest.py                # Pytest ortak yapılandırması ve izole test veritabanı kurulumu
 ├── test_phase1.py             # Faz 1 PII maskeleme ve unmasking testleri
 ├── test_phase2.py             # Faz 2 Heuristic & Prompt Injection testleri
 ├── test_phase3.py             # Faz 3 Vault, LLM servisi ve Token testleri
 ├── test_phase5.py             # Faz 5 OpenAI SDK uyumu, Maliyet, PII Tür ve Rate Limit testleri
+├── test_security_regressions.py # Güvenlik regresyon testleri (Unicode/zero-width, 502 vault purge vb.)
 ├── Dockerfile                 # Kurumsal konteyner imajı tanımı
 ├── docker-compose.yml         # Gateway + SOC Dashboard çoklu servis orkestrasyonu
 └── README.md                  # Proje dokümantasyonu

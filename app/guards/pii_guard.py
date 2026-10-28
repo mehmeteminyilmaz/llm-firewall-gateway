@@ -1,7 +1,27 @@
 import re
-from typing import Dict, Tuple, List
+from typing import Dict, Optional, Tuple, List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_anonymizer import AnonymizerEngine
+
+
+def _tc_checksum_ok(tc_no: str) -> bool:
+    """Resmi T.C. Kimlik No algoritması (10. ve 11. hane modül kontrolü)."""
+    if not tc_no or len(tc_no) != 11 or not tc_no.isdigit() or tc_no[0] == "0":
+        return False
+    d = [int(c) for c in tc_no]
+    digit_10 = ((sum(d[0:9:2]) * 7) - sum(d[1:8:2])) % 10
+    digit_11 = sum(d[:10]) % 10
+    return d[9] == digit_10 and d[10] == digit_11
+
+
+class TCKimlikRecognizer(PatternRecognizer):
+    """
+    11 haneli adayları yakalar, ardından resmi checksum ile doğrular.
+    Sipariş/fatura numarası gibi rastgele 11 haneli sayılar maskelenmez (yanlış pozitif azaltımı).
+    """
+
+    def validate_result(self, pattern_text: str) -> Optional[bool]:
+        return _tc_checksum_ok(pattern_text)
 
 
 class PIIGuard:
@@ -29,7 +49,7 @@ class PIIGuard:
             regex=r"\b[1-9][0-9]{10}\b",
             score=0.85
         )
-        tc_recognizer = PatternRecognizer(
+        tc_recognizer = TCKimlikRecognizer(
             supported_entity="TC_KIMLIK",
             patterns=[tc_pattern]
         )
@@ -50,7 +70,7 @@ class PIIGuard:
         # 3. Türkiye Telefon Numarası Tespiti (+90 5xx xxx xx xx, 05xx xxx xx xx vb.)
         tr_phone_pattern = Pattern(
             name="tr_phone_pattern",
-            regex=r"(?:\+90|0)?\s*5[0-9]{2}[\s\-]?[0-9]{3}[\s\-]?[0-9]{2}[\s\-]?[0-9]{2}\b",
+            regex=r"(?<![\d+])(?:\+90|0)?\s*5[0-9]{2}[\s\-]?[0-9]{3}[\s\-]?[0-9]{2}[\s\-]?[0-9]{2}(?!\d)",
             score=0.85
         )
         tr_phone_recognizer = PatternRecognizer(
@@ -59,9 +79,10 @@ class PIIGuard:
         )
         self.analyzer.registry.add_recognizer(tr_phone_recognizer)
 
-    def mask(self, text: str) -> Tuple[str, Dict[str, str]]:
+    def mask(self, text: str, start_index: int = 0) -> Tuple[str, Dict[str, str]]:
         """
         Metindeki hassas verileri maskeler ve geri dönüştürmek için eşleme sözlüğü üretir.
+        start_index: Çok mesajlı isteklerde yer tutucu numaralarının çakışmaması için başlangıç ofseti.
         """
         if not text:
             return "", {}
@@ -90,7 +111,7 @@ class PIIGuard:
 
         for idx, item in enumerate(filtered_results):
             original_val = text[item.start:item.end]
-            placeholder = f"[{item.entity_type}_{idx + 1}]"
+            placeholder = f"[{item.entity_type}_{start_index + idx + 1}]"
             vault_mapping[placeholder] = original_val
 
             # Metin içi dinamik yer değiştirme (kaymaları hesaplayarak)
@@ -120,14 +141,7 @@ class PIIGuard:
         """
         Resmi T.C. Kimlik Numarası algoritmik doğrulaması (11 hane + 10. ve 11. hane modül kontrolü).
         """
-        if not tc_no or len(tc_no) != 11 or not tc_no.isdigit() or tc_no[0] == "0":
-            return False
-        digits = [int(d) for d in tc_no]
-        odd_sum = sum(digits[0:9:2])
-        even_sum = sum(digits[1:8:2])
-        digit_10 = ((odd_sum * 7) - even_sum) % 10
-        digit_11 = sum(digits[:10]) % 10
-        return digits[9] == digit_10 and digits[10] == digit_11
+        return _tc_checksum_ok(tc_no)
 
     def unmask(self, masked_text: str, vault_mapping: Dict[str, str]) -> str:
         """
