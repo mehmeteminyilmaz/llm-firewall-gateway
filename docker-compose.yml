@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  gateway:
+    build: .
+    container_name: llm-guardrail-gateway
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./llmops.db:/app/llmops.db
+    environment:
+      - SQLITE_DB_PATH=/app/llmops.db
+
+  dashboard:
+    build: .
+    container_name: llm-guardrail-dashboard
+    command: python -m streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./llmops.db:/app/llmops.db
+    depends_on:
+      - gateway

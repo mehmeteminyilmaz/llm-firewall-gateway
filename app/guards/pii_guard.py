@@ -101,6 +101,34 @@ class PIIGuard:
 
         return masked_text, vault_mapping
 
+    @staticmethod
+    def summarize_entity_types(vault_mapping: Dict[str, str]) -> Dict[str, int]:
+        """
+        Kasa eşleme tablosundaki yer tutuculardan (ör. [TC_KIMLIK_1]) hangi veri
+        türünden kaç adet yakalandığını hesaplar.
+        """
+        counts: Dict[str, int] = {}
+        for placeholder in vault_mapping.keys():
+            inner = placeholder.strip("[]")
+            entity_type = "_".join(inner.split("_")[:-1])
+            if entity_type:
+                counts[entity_type] = counts.get(entity_type, 0) + 1
+        return counts
+
+    @staticmethod
+    def is_valid_tc_checksum(tc_no: str) -> bool:
+        """
+        Resmi T.C. Kimlik Numarası algoritmik doğrulaması (11 hane + 10. ve 11. hane modül kontrolü).
+        """
+        if not tc_no or len(tc_no) != 11 or not tc_no.isdigit() or tc_no[0] == "0":
+            return False
+        digits = [int(d) for d in tc_no]
+        odd_sum = sum(digits[0:9:2])
+        even_sum = sum(digits[1:8:2])
+        digit_10 = ((odd_sum * 7) - even_sum) % 10
+        digit_11 = sum(digits[:10]) % 10
+        return digits[9] == digit_10 and digits[10] == digit_11
+
     def unmask(self, masked_text: str, vault_mapping: Dict[str, str]) -> str:
         """
         LLM'den dönen yanıttaki yer tutucuları gerçek verilerle tekrar eşler.

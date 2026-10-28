@@ -161,6 +161,11 @@ flowchart TB
   - *JailbreakBench* ve *InfiBench / OWASP LLM01* uyumlu 50 örnekli veri seti üzerinde sınıflandırma (Accuracy, Precision, Recall, F1) ölçümleri
   - Kurumsal sentetik PII veri seti üzerinde varlık yakalama, Reversible Unmasking ve Zero-Leakage doğrulaması
   - P50 / P95 gecikme (latency overhead) SLA analizi ve otomatik rapor üretimi (`BENCHMARK_REPORT.md`)
+- [x] **Faz 5: Kurumsal Sertleştirme (Enterprise Hardening) & OpenAI SDK Uyumluluğu**
+  - Standart OpenAI SDK & LangChain Drop-In Proxy uyumluluğu (`/v1/chat/completions`) ve `X-Guardrail-*` telemetri başlıkları
+  - Model bazlı gerçek zamanlı USD maliyet (`estimated_cost_usd`) hesaplaması ve hassas veri tür dağılımı (`pii_types`) analitiği
+  - Sliding-Window Rate Limiting (`HTTP 429 Too Many Requests`) ve T.C. Kimlik algoritmik checksum doğrulaması
+  - Tek komutla kurumsal dağıtım için `Dockerfile` ve `docker-compose.yml` konteyner mimarisi
 
 ---
 
@@ -319,6 +324,9 @@ llm-firewall-gateway/
 ├── test_phase1.py             # Faz 1 PII maskeleme ve unmasking testleri
 ├── test_phase2.py             # Faz 2 Heuristic & Prompt Injection testleri
 ├── test_phase3.py             # Faz 3 Vault, LLM servisi ve Token testleri
+├── test_phase5.py             # Faz 5 OpenAI SDK uyumu, Maliyet, PII Tür ve Rate Limit testleri
+├── Dockerfile                 # Kurumsal konteyner imajı tanımı
+├── docker-compose.yml         # Gateway + SOC Dashboard çoklu servis orkestrasyonu
 └── README.md                  # Proje dokümantasyonu
 ```
 
