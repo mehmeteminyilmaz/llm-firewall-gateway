@@ -15,6 +15,12 @@ class PIIGuard:
         self.analyzer = AnalyzerEngine()
         self.anonymizer = AnonymizerEngine()
         self._add_custom_recognizers()
+        # Spacy/Presidio boru hattını başlatırken bir kez ısıt (cold-start gecikmesini önler)
+        self.analyzer.analyze(
+            text="warmup test@example.com",
+            entities=["TC_KIMLIK", "API_KEY", "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD"],
+            language="en"
+        )
 
     def _add_custom_recognizers(self):
         # 1. T.C. Kimlik No Tespiti (11 haneli kural: sıfır ile başlayamaz)
@@ -40,6 +46,18 @@ class PIIGuard:
             patterns=[api_pattern]
         )
         self.analyzer.registry.add_recognizer(api_recognizer)
+
+        # 3. Türkiye Telefon Numarası Tespiti (+90 5xx xxx xx xx, 05xx xxx xx xx vb.)
+        tr_phone_pattern = Pattern(
+            name="tr_phone_pattern",
+            regex=r"(?:\+90|0)?\s*5[0-9]{2}[\s\-]?[0-9]{3}[\s\-]?[0-9]{2}[\s\-]?[0-9]{2}\b",
+            score=0.85
+        )
+        tr_phone_recognizer = PatternRecognizer(
+            supported_entity="PHONE_NUMBER",
+            patterns=[tr_phone_pattern]
+        )
+        self.analyzer.registry.add_recognizer(tr_phone_recognizer)
 
     def mask(self, text: str) -> Tuple[str, Dict[str, str]]:
         """

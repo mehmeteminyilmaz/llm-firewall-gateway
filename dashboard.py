@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -70,6 +71,7 @@ section[data-testid="stSidebar"] .side-title {{
 )
 
 DB_PATH = Path(__file__).resolve().parent / "llmops.db"
+BENCHMARK_PATH = Path(__file__).resolve().parent / "benchmarks" / "latest_results.json"
 GATEWAY_URL = "http://127.0.0.1:8000/v1/chat/secure"
 
 
@@ -296,3 +298,27 @@ st.dataframe(
         "total_tokens": st.column_config.NumberColumn("Token"),
     },
 )
+
+# ---------------------------------------------------------------------------
+# Akademik Benchmark Özeti (Faz 4b)
+# ---------------------------------------------------------------------------
+if BENCHMARK_PATH.exists():
+    try:
+        with open(BENCHMARK_PATH, "r", encoding="utf-8") as bf:
+            bdata = json.load(bf)
+        inj = bdata["injection_benchmark"]
+        pii = bdata["pii_benchmark"]
+
+        section(f"Akademik Benchmark Sonuçları (Son Çalıştırma: {bdata.get('timestamp', '-')})")
+        bcols = st.columns(5, gap="small")
+        bcards = [
+            kpi("Injection F1-Skoru", f"%{inj['f1_score']:.1f}", f"Precision %{inj['precision']:.0f} · Recall %{inj['recall']:.0f}"),
+            kpi("Karışıklık Matrisi", f"{inj['tp']} TP / {inj['tn']} TN", f"{inj['fp']} FP · {inj['fn']} FN ({inj['total_samples']} örnek)"),
+            kpi("PII Maskeleme F1", f"%{pii['f1_score']:.1f}", f"{pii['tp']}/{pii['total_expected_entities']} varlık yakalandı"),
+            kpi("Inbound P95 Gecikme", f"{inj['p95_latency_ms']:.3f} ms", "Hedef < 5.0 ms"),
+            kpi("Outbound P95 Gecikme", f"{pii['p95_latency_ms']:.2f} ms", f"Unmask %{pii['unmask_accuracy']:.0f} · Hedef < 50 ms"),
+        ]
+        for col, html in zip(bcols, bcards):
+            col.markdown(html, unsafe_allow_html=True)
+    except Exception:
+        pass
