@@ -1,7 +1,7 @@
 # Enterprise LLM Guardrail & Gateway
 
 > **Kurumsal Büyük Dil Modelleri İçin Yüksek Performanslı Güvenlik Proxy'si ve LLMOps İzleme Sistemi**  
-> *Bitirme Projesi (Capstone Project — v1.2.0)*
+> *Bitirme Projesi (Capstone Project — v1.3.0)*
 
 [![Python Version](https://img.shields.io/badge/Python-3.11+-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -9,7 +9,8 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Pytest-27%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Tests](https://img.shields.io/badge/Pytest-33%20Passed-success.svg?logo=pytest&logoColor=white)]
+[![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı-faz-7)(#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -42,6 +43,7 @@ Kurumlar verimliliği artırmak amacıyla LLM (OpenAI, Anthropic, yerel vLLM/Oll
 - Unicode/Zero-Width gizleme (obfuscation) saldırılarını normalize ederek gelen jailbreak denemelerini **~0.04 ms** içinde engeller (**Inbound Guard - HTTP 403 Forbidden**),
 - LLM'den dönen yanıtta maskeleri güvenle çözer ve hedef LLM hata verse dahi (`HTTP 502`) kasayı derhal imha eder (**Reversible Unmasking & Fail-Safe Auto-Purge**),
 - Standart **OpenAI SDK (`/v1/chat/completions`)** uyumluluğu sayesinde mevcut çok-turlu (multi-turn) uygulamalara kod değişikliği gerektirmeden entegre olur; **`stream=true` (SSE) akışında yer tutucuları canlı olarak çözer**,
+- **Outbound Response Guardrail** ile model çıktısında canary token (honeypot) ifşasını, sistem talimatı sızıntılarını ve tehlikeli exploit çıktılarını anında tespit ederek sansürler,
 - Gateway ek gecikmesini (`gateway_overhead_ms`), LLM gecikmesini (`llm_latency_ms`), token tüketimini ve **model bazlı USD maliyetini (`estimated_cost_usd`)** anlık raporlar.
 
 ---
@@ -131,7 +133,9 @@ flowchart TB
 
     UpstreamLLM -->|"3. Maskeli Model Yanıtı (veya HTTP 502)"| RestoreLogic
     RedisVault -.->|"Kasa Değerlerini Getir ve Derhal Sil"| RestoreLogic
-    RestoreLogic -->|"4. Çözümlenmiş Nihai Yanıt + X-Guardrail-* Başlıkları"| ClientApp
+    RestoreLogic --> ResponseGuard["Outbound Response Guard Katmanı<br/>(Canary Token / Leakage / Exploit Check)"]
+    ResponseGuard -- "İhlal Yok (Güvenli Yanıt)" --> ClientApp
+    ResponseGuard -- "İhlal Tespit Edildi (RESPONSE_BLOCKED)" --> ClientApp
 
     %% Telemetri ve Loglama Bağlantıları
     BlockResp -.->|"Güvenlik İhlal Olayı"| AuditDB
@@ -160,6 +164,11 @@ flowchart TB
   - Kredi Kartı numaraları (Luhn algoritması), Türkiye telefon numaraları (`+90 5xx...`, `05xx...`), Cloud/LLM API anahtarları (`sk-...`, `ghp_...`, `AIza...`), **JWT** (`eyJ...`) ve **`Bearer` erişim jetonları** ile e-posta adresleri hibrit Presidio + Spacy motoruyla taranır.
 - **PII Tür Analitiği (`pii_types`):** Yakalanan her varlık türü (`TC_KIMLIK`, `TR_IBAN`, `EMAIL_ADDRESS`, `API_KEY`, `JWT_TOKEN`, `BEARER_TOKEN`, `PHONE_NUMBER`, `CREDIT_CARD`) ayrı ayrı sayılarak denetim veritabanına ve SOC paneline aktarılır.
 - **Fail-Safe Zero-Leakage Memory Vault:** Eşleme tablosu istemciye açık olarak dönülmez. Oturum bazlı UUID ile sunucu belleğinde tutulur ve `try/finally` garantisiyle (hedef LLM çökse veya zaman aşımına uğrasa bile) işlem sonunda bellekten derhal silinir.
+
+### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
+- **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
+- **Sistem Talimatı İfşa Taraması (Instruction Leakage):** Modelin 'My initial instructions are...', 'Sistem talimatlarım şunlardır:' gibi gizli yönergeleri dışarı sızdırması engellenir.
+- **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
 
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
@@ -196,6 +205,12 @@ flowchart TB
   - Model bazlı gerçek zamanlı USD maliyet (`estimated_cost_usd`) hesaplaması ve hassas veri tür dağılımı (`pii_types`) analitiği
   - Sliding-Window Rate Limiting (`HTTP 429`), opsiyonel API anahtarı doğrulaması (`HTTP 401`) ve Pytest güvenlik regresyon paketi
   - Tek komutla kurumsal dağıtım için `Dockerfile` ve paylaşımlı volume destekli `docker-compose.yml` mimarisi
+
+- [x] **Faz 7: Outbound Response Guardrail (Çıktı Güvenliği & Sızıntı Kalkanı)**
+  - Dinamik oturum bazlı Canary Token (Honeypot) enjeksiyonu ve sızıntı tespiti
+  - Verbatim sistem talimatı sızıntısı kalıpları (Instruction Leakage Echo)
+  - Yüksek riskli reverse-shell / exploit payload çıktı sansürleme ve akış içi kesme (`content_filter`)
+  - Denetim tablosunda ve SOC Paneli Pasta/Kırılım grafiklerinde `RESPONSE_BLOCKED` desteği
 
 - [x] **Faz 6: Streaming, Genişletilmiş Gizli Veri Tespiti ve CI/CD**
   - OpenAI uyumlu SSE akışı ve parça sınırlarına dayanıklı canlı unmasking (`StreamUnmasker`)
@@ -387,7 +402,7 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
 | **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **~0.04 ms / ~0.05 ms** |
 | **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **~10.17 ms / ~16.63 ms** |
-| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **27 / 27 Test Başarılı** |
+| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **33 / 33 Test Başarılı** |
 
 ---
 
@@ -415,6 +430,7 @@ llm-firewall-gateway/
 │   │   ├── __init__.py
 │   │   ├── pii_guard.py           # Checksum doğrulamalı T.C./IBAN tanıyıcıları, JWT/Bearer & Presidio PII Motoru
 │   │   ├── stream_unmasker.py     # SSE akışı için parça-sınırı güvenli canlı unmasking tamponu
+│   │   ├── response_guard.py      # Canary token, sistem sızıntısı ve zararlı çıktı süzgeci
 │   │   └── injection_guard.py     # Unicode NFKC normalizasyonlu 10 Katmanlı Tehdit Motoru
 │   ├── services/
 │   │   ├── __init__.py
@@ -439,6 +455,7 @@ llm-firewall-gateway/
 ├── test_phase5.py                 # Faz 5 OpenAI SDK uyumu, Maliyet, PII Tür ve Rate Limit testleri
 ├── test_security_regressions.py   # Güvenlik regresyon testleri (Unicode/zero-width, 502 vault purge vb.)
 ├── test_phase6_pii.py             # Faz 6 TR IBAN (MOD-97), JWT ve Bearer jeton testleri
+├── test_phase7_response_guard.py  # Faz 7 Canary token, sızıntı ve exploit çıktı testleri
 ├── Dockerfile                     # Kurumsal konteyner imajı tanımı
 ├── docker-compose.yml             # Gateway + SOC Dashboard çoklu servis orkestrasyonu
 └── README.md                      # Proje dokümantasyonu

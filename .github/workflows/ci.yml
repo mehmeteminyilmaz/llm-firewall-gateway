@@ -36,3 +36,4 @@ jobs:
           path: |
             BENCHMARK_REPORT.md
             benchmarks/latest_results.json
+

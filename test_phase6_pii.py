@@ -73,3 +73,4 @@ def test_endpoint_reports_new_pii_types():
     data = r.json()
     assert data["pii_types"].get("TR_IBAN") == 1 and data["pii_types"].get("JWT_TOKEN") == 1
     assert VALID_IBAN in data["response"]  # kullanıcıya dönen yanıtta unmask edilmiş olmalı
+

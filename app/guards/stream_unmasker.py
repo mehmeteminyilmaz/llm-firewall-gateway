@@ -61,3 +61,4 @@ class StreamUnmasker:
 
         self._buf = buf[pos:]
         return "".join(out)
+

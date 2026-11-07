@@ -222,7 +222,7 @@ if df.empty:
 # KPI'lar
 # ---------------------------------------------------------------------------
 total = len(df)
-blocked = int((df["status"] == "BLOCKED").sum())
+blocked = int((df["status"].isin(["BLOCKED", "RESPONSE_BLOCKED"])).sum())
 block_rate = blocked / total * 100 if total else 0.0
 pii_total = int(df["pii_count"].sum())
 avg_gw = df["gateway_latency_ms"].mean()
@@ -249,12 +249,15 @@ left, right = st.columns(2, gap="large")
 with left:
     section("İstek durumu")
     counts = df["status"].value_counts()
+    success_cnt = int(counts.get("SUCCESS", 0))
+    inbound_blk = int(counts.get("BLOCKED", 0))
+    resp_blk = int(counts.get("RESPONSE_BLOCKED", 0))
     fig = go.Figure(
         go.Pie(
-            labels=["Onaylanan", "Engellenen"],
-            values=[int(counts.get("SUCCESS", 0)), int(counts.get("BLOCKED", 0))],
+            labels=["Onaylanan", "Giriş Engellendi", "Yanıt Engellendi"],
+            values=[success_cnt, inbound_blk, resp_blk],
             hole=0.72,
-            marker=dict(colors=[SOFT, ALERT], line=dict(color="white", width=2)),
+            marker=dict(colors=[SOFT, ALERT, "#E65100"], line=dict(color="white", width=2)),
             textinfo="none",
             sort=False,
         )
@@ -281,7 +284,11 @@ left, right = st.columns(2, gap="large")
 with left:
     section("Tehdit skoru dağılımı")
     fig = go.Figure()
-    for status_val, color, name in [("SUCCESS", SOFT, "Onaylanan"), ("BLOCKED", ALERT, "Engellenen")]:
+    for status_val, color, name in [
+        ("SUCCESS", SOFT, "Onaylanan"),
+        ("BLOCKED", ALERT, "Giriş Engellendi"),
+        ("RESPONSE_BLOCKED", "#E65100", "Yanıt Engellendi"),
+    ]:
         fig.add_trace(go.Histogram(x=df[df["status"] == status_val]["threat_score"], name=name,
                                    marker_color=color, xbins=dict(start=0, end=1.0001, size=0.1)))
     fig.update_layout(barmode="stack", bargap=0.15)
@@ -335,18 +342,31 @@ with right:
 # ---------------------------------------------------------------------------
 section("Denetim kaydı")
 f1, _ = st.columns([1, 3])
-choice = f1.selectbox("Durum", ["Tümü", "Engellenen", "Onaylanan"], label_visibility="collapsed")
+choice = f1.selectbox(
+    "Durum",
+    ["Tümü", "Tüm Engellenenler", "Giriş Engellendi", "Yanıt Engellendi", "Onaylanan"],
+    label_visibility="collapsed",
+)
 
 view = df
-if choice == "Engellenen":
+if choice == "Tüm Engellenenler":
+    view = df[df["status"].isin(["BLOCKED", "RESPONSE_BLOCKED"])]
+elif choice == "Giriş Engellendi":
     view = df[df["status"] == "BLOCKED"]
+elif choice == "Yanıt Engellendi":
+    view = df[df["status"] == "RESPONSE_BLOCKED"]
 elif choice == "Onaylanan":
     view = df[df["status"] == "SUCCESS"]
 
 table = view[["id", "timestamp", "status", "model", "threat_score", "pii_count",
               "gateway_latency_ms", "llm_latency_ms", "total_tokens", "estimated_cost_usd"]].copy()
 table["status"] = table["status"].map(
-    {"SUCCESS": "Onaylandı", "BLOCKED": "Engellendi", "UPSTREAM_ERROR": "LLM Hatası"}
+    {
+        "SUCCESS": "Onaylandı",
+        "BLOCKED": "Giriş Engellendi",
+        "RESPONSE_BLOCKED": "Yanıt Engellendi",
+        "UPSTREAM_ERROR": "LLM Hatası",
+    }
 ).fillna(table["status"])
 
 st.dataframe(

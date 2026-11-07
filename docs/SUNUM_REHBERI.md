@@ -27,7 +27,8 @@ Hazırlık: `docker compose up --build` (veya iki terminalde `uvicorn` + `stream
 4. **Yanlış pozitif yok:** `Fatura 20231105998 ödendi` gönder → maskelenmez (T.C. checksum doğrulaması). Sonra geçerli bir T.C. numarasıyla karşılaştır.
 5. **Drop-in uyumluluk:** README Bölüm 7-C'deki `openai` istemci kodunu çalıştır (yalnızca `base_url` değişti). `stream=True` ile **kelime kelime akış** sırasında yer tutucuların canlı çözüldüğünü göster.
 6. **Hata dayanıklılığı:** Upstream'i kapat → istemciye temiz `502`; `/health` içinde `active_vault_sessions: 0` (kasada PII kalmadı).
-7. **Panel:** PII tür dağılımı, gecikme grafiği, maliyet, benchmark kartları.
+7. **Çıktı Güvenliği (Response Guard & Canary Token):** Model sistem promptundaki gizli canary token'ı veya reverse-shell exploit kodunu sızdırmaya kalkışırsa yanıtın anında `RESPONSE_BLOCKED` olarak sansürlendiğini gösterin.
+8. **Panel:** PII tür dağılımı, gecikme grafiği, `RESPONSE_BLOCKED` pasta dilimi, maliyet, benchmark kartları.
 
 ---
 
@@ -35,6 +36,9 @@ Hazırlık: `docker compose up --build` (veya iki terminalde `uvicorn` + `stream
 
 **S: "%100 F1 skoru nasıl mümkün? Overfit değil mi?"**
 C: Değerlendirme veri seti (50 injection + 10 PII vakası) projede geliştirdiğimiz kurallarla birlikte evrildi; bu yüzden %100 *genelleme iddiası değil*, regresyon tabanıdır. Asıl değeri: kurallar değiştikçe hiçbir bilinen vakanın bozulmadığını CI'da garanti etmesi. Bağımsız bir veri setiyle (JailbreakBench tam seti) ölçüm gelecek iş olarak planlı.
+
+**S: "Model yanıtında (çıktıda) sızıntı veya zararlı içerik kontrolü var mı?"**
+C: Evet, **Faz 7 Outbound Response Guardrail** katmanımız: (1) Oturum bazlı dinamik Canary Token (Honeypot) enjekte ederek sistem prompt ifşasını yakalar, (2) 'My initial instructions are' gibi verbatim prompt sızıntısı kalıplarını denetler, (3) Model jailbreak olsa dahi reverse-shell / exploit payload çıktısı üretmesini engelleyerek yanıtı sansürler.
 
 **S: "Regex ile prompt injection tespiti yeterli mi?"**
 C: Hayır, tek başına yeterli değil; **bilinen kalıplar için ucuz ilk savunma hattı** (~0.04 ms). Anlamsal/çok adımlı saldırıları yakalamak için sınıflandırıcı (DeBERTa/Llama-Guard) tabanlı ikinci katman şartnamede öngörülmüş gelecek iştir. Mimari bunu eklemeye hazır: `InjectionGuard.scan` aynı arayüzle genişletilebilir.
@@ -59,13 +63,12 @@ C: `StreamUnmasker` yarım kalmış `[...` kuyruğunu en fazla 48 karakter tampo
 - **Heuristik injection tespiti:** yeni/yaratıcı saldırılar kaçabilir; ML sınıflandırıcı katmanı eklenmeli.
 - **PII için dil kapsamı:** NER İngilizce modelle; Türkçe isim/adres tespiti (PERSON/LOCATION) kapsam dışı, yalnızca desenli veriler (T.C., IBAN, telefon, e-posta, kart, anahtar) hedeflenir.
 - **Benchmark veri seti küçük ve kendi derlememiz;** bağımsız doğrulama yapılmadı.
-- **Çıktı tarafı (LLM yanıtı) taraması yok:** LLM'in ürettiği zararlı içerik filtrelenmiyor; yalnızca giriş/çıkış PII yönetimi var.
 - **Kimlik doğrulama basit:** statik API anahtarları; OAuth/JWT doğrulaması yok.
 
 ## 5. Gelecek İş (sunumun son slaytı)
 
 1. Redis tabanlı vault + dağıtık rate limiting
 2. Transformer tabanlı injection sınıflandırıcı (ikinci katman) ve bağımsız JailbreakBench değerlendirmesi
-3. LLM çıktısı için guardrail (toksisite, sızıntı tespiti)
-4. Türkçe NER (PERSON/ADDRESS) entegrasyonu
-5. PostgreSQL denetim deposu ve rol bazlı panel erişimi
+3. Türkçe NER (PERSON/ADDRESS) entegrasyonu
+4. PostgreSQL denetim deposu ve rol bazlı panel erişimi
+

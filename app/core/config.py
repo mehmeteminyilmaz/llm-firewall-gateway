@@ -15,7 +15,7 @@ def _csv(value: str) -> List[str]:
 
 class Settings:
     PROJECT_NAME: str = "Enterprise LLM Guardrail & Gateway"
-    VERSION: str = "1.2.0"
+    VERSION: str = "1.3.0"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")

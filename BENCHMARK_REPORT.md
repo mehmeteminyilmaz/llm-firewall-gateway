@@ -1,6 +1,6 @@
 # Akademik Benchmark ve Performans Değerlendirme Raporu (Faz 4b)
 
-> **Oluşturulma Tarihi:** `2026-11-07 16:56:44`  
+> **Oluşturulma Tarihi:** `2026-11-07 17:09:03`  
 > **Veri Seti:** `Enterprise LLM Guardrail Benchmark Suite (v1.0.0)`
 
 ---
@@ -13,8 +13,8 @@
 | **Inbound Guard Kesinlik / Duyarlılık** (Precision / Recall) | **%100.0 / %100.0** | $> \%95.0$ | BAŞARILI |
 | **Outbound Guard PII Maskeleme F1-Skoru** | **%100.0** | $\%100.0$ | BAŞARILI |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | **%100.0 / %100.0** | $\%100.0$ | BAŞARILI |
-| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0354 ms / 0.0494 ms** | $< 5\text{ ms}$ | BAŞARILI |
-| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **10.65 ms / 16.29 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
+| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0379 ms / 0.0542 ms** | $< 5\text{ ms}$ | BAŞARILI |
+| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **10.03 ms / 15.83 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
 
 ---
 
@@ -60,8 +60,8 @@ Kurumsal senaryoları temsil eden **10 sentetik test vakası** ve toplam **19 ha
 
 | Varlık Türü (Entity) | Beklenen | Tespit Edilen | Doğru Eşleşen (TP) | Duyarlılık (Recall) |
 |---|---|---|---|---|
-| `TC_KIMLIK` | 5 | 5 | 5 | **%100.0** |
 | `EMAIL_ADDRESS` | 7 | 7 | 7 | **%100.0** |
+| `TC_KIMLIK` | 5 | 5 | 5 | **%100.0** |
 | `API_KEY` | 3 | 3 | 3 | **%100.0** |
 | `PHONE_NUMBER` | 2 | 2 | 2 | **%100.0** |
 | `TR_IBAN` | 1 | 1 | 1 | **%100.0** |
@@ -79,5 +79,5 @@ Kurumsal senaryoları temsil eden **10 sentetik test vakası** ve toplam **19 ha
 
 | Katman | Ortalama (Mean) | Medyan (P50) | P95 Gecikme | SLA Hedefi |
 |---|---|---|---|---|
-| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0354 ms` | `0.0335 ms` | `0.0494 ms` | `< 5.0 ms` |
-| **Outbound Guard (Presidio NER + Regex + Vault)** | `10.65 ms` | `8.42 ms` | `16.29 ms` | `< 50.0 ms` |
+| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0379 ms` | `0.0357 ms` | `0.0542 ms` | `< 5.0 ms` |
+| **Outbound Guard (Presidio NER + Regex + Vault)** | `10.03 ms` | `7.8 ms` | `15.83 ms` | `< 50.0 ms` |
