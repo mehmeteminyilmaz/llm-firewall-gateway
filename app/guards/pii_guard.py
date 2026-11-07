@@ -24,12 +24,34 @@ class TCKimlikRecognizer(PatternRecognizer):
         return _tc_checksum_ok(pattern_text)
 
 
+def _iban_mod97_ok(iban: str) -> bool:
+    """ISO 13616 IBAN doğrulaması (MOD-97) ve Türkiye uzunluk kontrolü (26 karakter)."""
+    s = re.sub(r"[\s-]", "", iban).upper()
+    if not re.fullmatch(r"TR\d{24}", s):
+        return False
+    rearranged = s[4:] + s[:4]
+    numeric = "".join(str(int(c, 36)) for c in rearranged)
+    return int(numeric) % 97 == 1
+
+
+class TRIBANRecognizer(PatternRecognizer):
+    """TR IBAN adaylarını (boşluklu veya bitişik) yakalar ve MOD-97 ile doğrular."""
+
+    def validate_result(self, pattern_text: str) -> Optional[bool]:
+        return _iban_mod97_ok(pattern_text)
+
+
 class PIIGuard:
     """
     Regex ve Presidio tabanlı hibrit PII Maskeleme ve Geri Dönüştürme Motoru.
     Hassas verileri (T.C. Kimlik, API Anahtarları, E-posta, Telefon, Kredi Kartı) maskeler
     ve tersine eşleme (unmasking) için yerel kasa (vault) oluşturur.
     """
+
+    ENTITIES = [
+        "TC_KIMLIK", "TR_IBAN", "API_KEY", "JWT_TOKEN", "BEARER_TOKEN",
+        "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD",
+    ]
 
     def __init__(self):
         self.analyzer = AnalyzerEngine()
@@ -38,7 +60,7 @@ class PIIGuard:
         # Spacy/Presidio boru hattını başlatırken bir kez ısıt (cold-start gecikmesini önler)
         self.analyzer.analyze(
             text="warmup test@example.com",
-            entities=["TC_KIMLIK", "API_KEY", "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD"],
+            entities=self.ENTITIES,
             language="en"
         )
 
@@ -79,6 +101,36 @@ class PIIGuard:
         )
         self.analyzer.registry.add_recognizer(tr_phone_recognizer)
 
+        # 4. Türkiye IBAN (TR + 24 hane, boşluklu/bitişik) - MOD-97 doğrulamalı
+        iban_pattern = Pattern(
+            name="tr_iban_pattern",
+            regex=r"\bTR\d{2}(?:[ \-]?\d{4}){5}[ \-]?\d{2}\b",
+            score=0.95
+        )
+        self.analyzer.registry.add_recognizer(
+            TRIBANRecognizer(supported_entity="TR_IBAN", patterns=[iban_pattern])
+        )
+
+        # 5. JWT (header.payload.signature) - base64url, header/payload JSON '{' = 'eyJ'
+        jwt_pattern = Pattern(
+            name="jwt_pattern",
+            regex=r"\beyJ[A-Za-z0-9_\-]{5,}\.eyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{5,}",
+            score=0.95
+        )
+        self.analyzer.registry.add_recognizer(
+            PatternRecognizer(supported_entity="JWT_TOKEN", patterns=[jwt_pattern])
+        )
+
+        # 6. Authorization: Bearer <token> (opak erişim jetonları)
+        bearer_pattern = Pattern(
+            name="bearer_pattern",
+            regex=r"(?i)\bbearer\s+[A-Za-z0-9\-._~+/]{20,}=*",
+            score=0.9
+        )
+        self.analyzer.registry.add_recognizer(
+            PatternRecognizer(supported_entity="BEARER_TOKEN", patterns=[bearer_pattern])
+        )
+
     def mask(self, text: str, start_index: int = 0) -> Tuple[str, Dict[str, str]]:
         """
         Metindeki hassas verileri maskeler ve geri dönüştürmek için eşleme sözlüğü üretir.
@@ -90,7 +142,7 @@ class PIIGuard:
         # Hassas varlıkları analiz et
         results = self.analyzer.analyze(
             text=text,
-            entities=["TC_KIMLIK", "API_KEY", "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD"],
+            entities=self.ENTITIES,
             language="en"  # Türkçe varlıklar özel regex'ler ve TR modellerle zenginleştirilecek
         )
 

@@ -300,6 +300,9 @@ with right:
             "API_KEY": "API Anahtarı / Token",
             "PHONE_NUMBER": "Telefon Numarası",
             "CREDIT_CARD": "Kredi Kartı",
+            "TR_IBAN": "IBAN (TR)",
+            "JWT_TOKEN": "JWT Jetonu",
+            "BEARER_TOKEN": "Bearer Jetonu",
         }
         sorted_items = sorted(pii_breakdown.items(), key=lambda x: x[1], reverse=True)
         x_labels = [labels_map.get(k, k) for k, _ in sorted_items]

@@ -366,56 +366,107 @@
       "id": "PII-001",
       "prompt": "Müşterimiz Ayşe Yılmaz'ın T.C. Kimlik numarası 12345678950 ve kurumsal e-postası ayse.yilmaz@kurum.com.tr adresidir.",
       "expected_entities": {
-        "TC_KIMLIK": ["12345678950"],
-        "EMAIL_ADDRESS": ["ayse.yilmaz@kurum.com.tr"]
+        "TC_KIMLIK": [
+          "12345678950"
+        ],
+        "EMAIL_ADDRESS": [
+          "ayse.yilmaz@kurum.com.tr"
+        ]
       }
     },
     {
       "id": "PII-002",
       "prompt": "Üretim ortamı OpenAI anahtarımız sk-live9876543210abcdef1234567890abcdef ve yönetici iletişim adresi admin@devops.io olarak güncellendi.",
       "expected_entities": {
-        "API_KEY": ["sk-live9876543210abcdef1234567890abcdef"],
-        "EMAIL_ADDRESS": ["admin@devops.io"]
+        "API_KEY": [
+          "sk-live9876543210abcdef1234567890abcdef"
+        ],
+        "EMAIL_ADDRESS": [
+          "admin@devops.io"
+        ]
       }
     },
     {
       "id": "PII-003",
       "prompt": "VIP müşteri Mehmet Demir (TC: 98765432150) için +905321112233 numaralı telefondan aranarak bilgilendirme yapılması gerekmektedir.",
       "expected_entities": {
-        "TC_KIMLIK": ["98765432150"],
-        "PHONE_NUMBER": ["+905321112233"]
+        "TC_KIMLIK": [
+          "98765432150"
+        ],
+        "PHONE_NUMBER": [
+          "+905321112233"
+        ]
       }
     },
     {
       "id": "PII-004",
       "prompt": "Kurumsal entegrasyon anahtarı sk-proj-00000000000000000000000000000000 sızdırılmış olabilir, lütfen security@company.org adresine bildirin.",
       "expected_entities": {
-        "API_KEY": ["sk-proj-00000000000000000000000000000000"],
-        "EMAIL_ADDRESS": ["security@company.org"]
+        "API_KEY": [
+          "sk-proj-00000000000000000000000000000000"
+        ],
+        "EMAIL_ADDRESS": [
+          "security@company.org"
+        ]
       }
     },
     {
       "id": "PII-005",
       "prompt": "Bulut servis anahtarı sk-test-11111111111111111111111111111111 ve sorumlu personel TC 23456789060 kaydını kontrol edin.",
       "expected_entities": {
-        "API_KEY": ["sk-test-11111111111111111111111111111111"],
-        "TC_KIMLIK": ["23456789060"]
+        "API_KEY": [
+          "sk-test-11111111111111111111111111111111"
+        ],
+        "TC_KIMLIK": [
+          "23456789060"
+        ]
       }
     },
     {
       "id": "PII-006",
       "prompt": "Kayıtlı iki çalışan: 34567890170 (ik@holding.com) ve 45678901280 (finans@holding.com) için bordro özetini oluştur.",
       "expected_entities": {
-        "TC_KIMLIK": ["34567890170", "45678901280"],
-        "EMAIL_ADDRESS": ["ik@holding.com", "finans@holding.com"]
+        "TC_KIMLIK": [
+          "34567890170",
+          "45678901280"
+        ],
+        "EMAIL_ADDRESS": [
+          "ik@holding.com",
+          "finans@holding.com"
+        ]
       }
     },
     {
       "id": "PII-007",
       "prompt": "Destek hattımız 0544 222 33 44 üzerinden müşteri destek@banka.com adresine şifre sıfırlama bağlantısı gönderdi.",
       "expected_entities": {
-        "PHONE_NUMBER": ["0544 222 33 44"],
-        "EMAIL_ADDRESS": ["destek@banka.com"]
+        "PHONE_NUMBER": [
+          "0544 222 33 44"
+        ],
+        "EMAIL_ADDRESS": [
+          "destek@banka.com"
+        ]
+      }
+    },
+    {
+      "id": "PII-009",
+      "prompt": "Tedarikçi ödemesi için TR330006100519786457841326 IBAN numarasına havale yapılacak, dekont ik@holding.com adresine iletilsin.",
+      "expected_entities": {
+        "TR_IBAN": [
+          "TR330006100519786457841326"
+        ],
+        "EMAIL_ADDRESS": [
+          "ik@holding.com"
+        ]
+      }
+    },
+    {
+      "id": "PII-010",
+      "prompt": "Oturum jetonu eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiZGVtbyIsICJyb2xlIjogInZpZXdlciJ9.ZGVtby1zaWduYXR1cmU loglarda göründü, lütfen iptal edin.",
+      "expected_entities": {
+        "JWT_TOKEN": [
+          "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiZGVtbyIsICJyb2xlIjogInZpZXdlciJ9.ZGVtby1zaWduYXR1cmU"
+        ]
       }
     },
     {
@@ -425,4 +476,3 @@
     }
   ]
 }
-

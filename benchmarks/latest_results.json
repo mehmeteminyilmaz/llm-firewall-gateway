@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-29 00:29:13",
+  "timestamp": "2026-11-07 16:54:28",
   "metadata": {
     "name": "Enterprise LLM Guardrail Benchmark Suite",
     "version": "1.0.0",
@@ -22,10 +22,10 @@
     "precision": 100.0,
     "recall": 100.0,
     "f1_score": 100.0,
-    "avg_latency_ms": 0.0416,
-    "p50_latency_ms": 0.0342,
-    "p95_latency_ms": 0.0463,
-    "p99_latency_ms": 0.0675,
+    "avg_latency_ms": 0.1429,
+    "p50_latency_ms": 0.0341,
+    "p95_latency_ms": 0.0568,
+    "p99_latency_ms": 0.0814,
     "category_breakdown": {
       "Direct Instruction Override": {
         "total": 7,
@@ -71,9 +71,9 @@
     "misclassified": []
   },
   "pii_benchmark": {
-    "total_cases": 8,
-    "total_expected_entities": 16,
-    "tp": 16,
+    "total_cases": 10,
+    "total_expected_entities": 19,
+    "tp": 19,
     "fp": 0,
     "fn": 0,
     "precision": 100.0,
@@ -81,14 +81,14 @@
     "f1_score": 100.0,
     "unmask_accuracy": 100.0,
     "zero_leakage_rate": 100.0,
-    "avg_latency_ms": 11.34,
-    "p50_latency_ms": 8.99,
-    "p95_latency_ms": 16.8,
+    "avg_latency_ms": 10.58,
+    "p50_latency_ms": 8.12,
+    "p95_latency_ms": 16.72,
     "entity_breakdown": {
       "EMAIL_ADDRESS": {
-        "expected": 6,
-        "detected": 6,
-        "matched": 6
+        "expected": 7,
+        "detected": 7,
+        "matched": 7
       },
       "TC_KIMLIK": {
         "expected": 5,
@@ -104,6 +104,16 @@
         "expected": 2,
         "detected": 2,
         "matched": 2
+      },
+      "TR_IBAN": {
+        "expected": 1,
+        "detected": 1,
+        "matched": 1
+      },
+      "JWT_TOKEN": {
+        "expected": 1,
+        "detected": 1,
+        "matched": 1
       }
     }
   }
