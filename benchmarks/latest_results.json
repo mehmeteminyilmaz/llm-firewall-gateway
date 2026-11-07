@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-07 17:09:03",
+  "timestamp": "2026-11-07 17:16:03",
   "metadata": {
     "name": "Enterprise LLM Guardrail Benchmark Suite",
     "version": "1.0.0",
@@ -22,10 +22,10 @@
     "precision": 100.0,
     "recall": 100.0,
     "f1_score": 100.0,
-    "avg_latency_ms": 0.0379,
-    "p50_latency_ms": 0.0357,
-    "p95_latency_ms": 0.0542,
-    "p99_latency_ms": 0.0636,
+    "avg_latency_ms": 0.0351,
+    "p50_latency_ms": 0.0338,
+    "p95_latency_ms": 0.0476,
+    "p99_latency_ms": 0.0531,
     "category_breakdown": {
       "Direct Instruction Override": {
         "total": 7,
@@ -81,9 +81,9 @@
     "f1_score": 100.0,
     "unmask_accuracy": 100.0,
     "zero_leakage_rate": 100.0,
-    "avg_latency_ms": 10.03,
-    "p50_latency_ms": 7.8,
-    "p95_latency_ms": 15.83,
+    "avg_latency_ms": 9.93,
+    "p50_latency_ms": 7.66,
+    "p95_latency_ms": 15.74,
     "entity_breakdown": {
       "EMAIL_ADDRESS": {
         "expected": 7,

@@ -9,8 +9,8 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Pytest-33%20Passed-success.svg?logo=pytest&logoColor=white)]
-[![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı-faz-7)(#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Tests](https://img.shields.io/badge/Pytest-33%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--zararlı-çıktı-kalkanı-faz-7)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -264,7 +264,7 @@ python -m streamlit run dashboard.py
 SOC Paneli: [http://localhost:8501](http://localhost:8501)
 
 #### 3. Otomatik Test ve Regresyon Paketini Çalıştırma
-`pytest -q` (27 test) ve `python benchmark.py` her push'ta GitHub Actions üzerinde de çalışır. Testler `conftest.py` sayesinde geçici bir veritabanında izole çalışır, canlı SOC veritabanınızı (`llmops.db`) kirletmez:
+`pytest -q` (33 test) ve `python benchmark.py` her push'ta GitHub Actions üzerinde de çalışır. Testler `conftest.py` sayesinde geçici bir veritabanında izole çalışır, canlı SOC veritabanınızı (`llmops.db`) kirletmez:
 ```bash
 pytest -q
 ```
@@ -384,6 +384,32 @@ response = client.chat.completions.create(
 
 print(response.choices[0].message.content)
 ```
+
+---
+
+### D) Outbound Response Guardrail (Canary Token & Zararlı Çıktı Kalkanı - Faz 7)
+
+Model prompt enjeksiyonuna maruz kalsa veya kandırılsa dahi, dönen yanıtta sistem talimatı ifşası, honeypot canary sızıntısı veya zararlı ters kabuk / exploit kodları tespit edilip engellenir:
+
+1. **Canary Token / Honeypot Koruması:**
+   - Gateway, her oturum için benzersiz bir `CANARY_SEC_<id>` üretip ilk `system` yönergesine sessizce ekler.
+   - Model yanıtında bu belirteç saptandığı anda (Prompt Leakage) yanıt derhal sansürlenir ve SOC paneline `RESPONSE_BLOCKED` olarak kaydedilir.
+
+2. **Zararlı Exploit & Ters Kabuk Kalkanı:**
+   - Modelin `/bin/bash -i`, `nc -e /bin/sh`, powershell encoded payload vb. exploit kodları üretmesi anında engellenir.
+
+**Örnek Bloke Yanıt (`HTTP 200` veya SSE `content_filter`):**
+```json
+{
+  "status": "RESPONSE_BLOCKED",
+  "threat_score": 1.0,
+  "response": "[GÜVENLİK POLİTİKASI İHLALİ: Model yanıtında gizli sistem yönergeleri veya yetkisiz exploit kodu tespit edildi. Yanıt kurumsal güvenlik duvarı tarafından sansürlendi.]",
+  "gateway_overhead_ms": 12.1,
+  "pii_detected_count": 0
+}
+```
+
+Canlı SSE akışında (`stream=true`) ise yanıt ortasında zararlı içerik belirdiği anda akış OpenAI uyumlu `finish_reason="content_filter"` bildirimiyle kesilir ve bağlantı güvenle sonlandırılır.
 
 ---
 

@@ -95,3 +95,4 @@ def test_streaming_blocks_compromised_response(monkeypatch):
         raw = "".join(r.iter_text())
         assert "[GÜVENLİK POLİTİKASI İHLALİ" in raw
         assert "content_filter" in raw
+

@@ -1,6 +1,6 @@
 # Akademik Benchmark ve Performans Değerlendirme Raporu (Faz 4b)
 
-> **Oluşturulma Tarihi:** `2026-11-07 17:09:03`  
+> **Oluşturulma Tarihi:** `2026-11-07 17:16:03`  
 > **Veri Seti:** `Enterprise LLM Guardrail Benchmark Suite (v1.0.0)`
 
 ---
@@ -13,8 +13,8 @@
 | **Inbound Guard Kesinlik / Duyarlılık** (Precision / Recall) | **%100.0 / %100.0** | $> \%95.0$ | BAŞARILI |
 | **Outbound Guard PII Maskeleme F1-Skoru** | **%100.0** | $\%100.0$ | BAŞARILI |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | **%100.0 / %100.0** | $\%100.0$ | BAŞARILI |
-| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0379 ms / 0.0542 ms** | $< 5\text{ ms}$ | BAŞARILI |
-| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **10.03 ms / 15.83 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
+| **Inbound Guard Gecikmesi (Ort. / P95)** | **0.0351 ms / 0.0476 ms** | $< 5\text{ ms}$ | BAŞARILI |
+| **Outbound PII + Vault Gecikmesi (Ort. / P95)** | **9.93 ms / 15.74 ms** | $< 50\text{ ms}$ (SLA) | BAŞARILI |
 
 ---
 
@@ -79,5 +79,5 @@ Kurumsal senaryoları temsil eden **10 sentetik test vakası** ve toplam **19 ha
 
 | Katman | Ortalama (Mean) | Medyan (P50) | P95 Gecikme | SLA Hedefi |
 |---|---|---|---|---|
-| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0379 ms` | `0.0357 ms` | `0.0542 ms` | `< 5.0 ms` |
-| **Outbound Guard (Presidio NER + Regex + Vault)** | `10.03 ms` | `7.8 ms` | `15.83 ms` | `< 50.0 ms` |
+| **Inbound Guard (Regex + Semantik Yoğunluk)** | `0.0351 ms` | `0.0338 ms` | `0.0476 ms` | `< 5.0 ms` |
+| **Outbound Guard (Presidio NER + Regex + Vault)** | `9.93 ms` | `7.66 ms` | `15.74 ms` | `< 50.0 ms` |
