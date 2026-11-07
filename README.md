@@ -1,14 +1,15 @@
 # Enterprise LLM Guardrail & Gateway
 
 > **Kurumsal Büyük Dil Modelleri İçin Yüksek Performanslı Güvenlik Proxy'si ve LLMOps İzleme Sistemi**  
-> *Bitirme Projesi (Capstone Project — v1.1.0)*
+> *Bitirme Projesi (Capstone Project — v1.2.0)*
 
 [![Python Version](https://img.shields.io/badge/Python-3.11+-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Presidio](https://img.shields.io/badge/Microsoft-Presidio%20PII-green.svg)](https://microsoft.github.io/presidio/)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
-[![Tests](https://img.shields.io/badge/Pytest-17%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/Pytest-27%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -40,7 +41,7 @@ Kurumlar verimliliği artırmak amacıyla LLM (OpenAI, Anthropic, yerel vLLM/Oll
 - İstemci/API anahtarı bazlı hız sınırlandırması (**Sliding-Window Rate Limiting - HTTP 429**) ve opsiyonel **Bearer kimlik doğrulaması (`HTTP 401`)** uygular,
 - Unicode/Zero-Width gizleme (obfuscation) saldırılarını normalize ederek gelen jailbreak denemelerini **~0.04 ms** içinde engeller (**Inbound Guard - HTTP 403 Forbidden**),
 - LLM'den dönen yanıtta maskeleri güvenle çözer ve hedef LLM hata verse dahi (`HTTP 502`) kasayı derhal imha eder (**Reversible Unmasking & Fail-Safe Auto-Purge**),
-- Standart **OpenAI SDK (`/v1/chat/completions`)** uyumluluğu sayesinde mevcut çok-turlu (multi-turn) uygulamalara kod değişikliği gerektirmeden entegre olur,
+- Standart **OpenAI SDK (`/v1/chat/completions`)** uyumluluğu sayesinde mevcut çok-turlu (multi-turn) uygulamalara kod değişikliği gerektirmeden entegre olur; **`stream=true` (SSE) akışında yer tutucuları canlı olarak çözer**,
 - Gateway ek gecikmesini (`gateway_overhead_ms`), LLM gecikmesini (`llm_latency_ms`), token tüketimini ve **model bazlı USD maliyetini (`estimated_cost_usd`)** anlık raporlar.
 
 ---
@@ -155,12 +156,14 @@ flowchart TB
 ### B. Outbound Guard (Hassas Veri Maskeleme & Zero-Leakage Vault)
 - **Algoritmik Checksum Doğrulamalı PII Taraması:**
   - `TCKimlikRecognizer`: 11 haneli aday sayıları yakalar ve **10. ile 11. hane resmi T.C. Kimlik modül algoritması** ile doğrular. Böylece rastgele 11 haneli fatura/sipariş numaraları yanlışlıkla T.C. Kimlik olarak maskelenmez (Sıfır Yanlış Pozitif).
-  - Kredi Kartı numaraları (Luhn algoritması), Türkiye telefon numaraları (`+90 5xx...`, `05xx...`), Cloud/LLM API anahtarları (`sk-...`, `ghp_...`, `AIza...`) ve e-posta adresleri hibrit Presidio + Spacy NER motoruyla taranır.
-- **PII Tür Analitiği (`pii_types`):** Yakalanan her varlık türü (`TC_KIMLIK`, `EMAIL_ADDRESS`, `API_KEY`, `PHONE_NUMBER`, `CREDIT_CARD`) ayrı ayrı sayılarak denetim veritabanına ve SOC paneline aktarılır.
+  - `TRIBANRecognizer`: Türkiye IBAN numaralarını (`TR` + 24 hane, boşluklu/bitişik) **ISO 13616 MOD-97** ile doğrular.
+  - Kredi Kartı numaraları (Luhn algoritması), Türkiye telefon numaraları (`+90 5xx...`, `05xx...`), Cloud/LLM API anahtarları (`sk-...`, `ghp_...`, `AIza...`), **JWT** (`eyJ...`) ve **`Bearer` erişim jetonları** ile e-posta adresleri hibrit Presidio + Spacy motoruyla taranır.
+- **PII Tür Analitiği (`pii_types`):** Yakalanan her varlık türü (`TC_KIMLIK`, `TR_IBAN`, `EMAIL_ADDRESS`, `API_KEY`, `JWT_TOKEN`, `BEARER_TOKEN`, `PHONE_NUMBER`, `CREDIT_CARD`) ayrı ayrı sayılarak denetim veritabanına ve SOC paneline aktarılır.
 - **Fail-Safe Zero-Leakage Memory Vault:** Eşleme tablosu istemciye açık olarak dönülmez. Oturum bazlı UUID ile sunucu belleğinde tutulur ve `try/finally` garantisiyle (hedef LLM çökse veya zaman aşımına uğrasa bile) işlem sonunda bellekten derhal silinir.
 
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
+- **Streaming (SSE) ve Akış İçi Unmasking:** `stream=true` isteklerinde yanıt OpenAI `chat.completion.chunk` formatında akar. LLM bir yer tutucuyu parçalara bölse bile (`[TC_KI` + `MLIK_1]`) `StreamUnmasker` yarım kalan kuyruğu (en fazla 48 karakter) tamponlayıp tamamlanınca gerçek veriyle değiştirir; kasa akış başlar başlamaz imha edilir. Upstream erişilemezse akış başlamadan temiz `HTTP 502` döner.
 - **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
 
 ---
@@ -191,8 +194,15 @@ flowchart TB
 - [x] **Faz 5: Kurumsal Sertleştirme (Enterprise Hardening) & OpenAI SDK Uyumluluğu**
   - Çok-turlu OpenAI SDK & LangChain Drop-In Proxy uyumluluğu (`/v1/chat/completions`) ve `X-Guardrail-*` telemetri başlıkları
   - Model bazlı gerçek zamanlı USD maliyet (`estimated_cost_usd`) hesaplaması ve hassas veri tür dağılımı (`pii_types`) analitiği
-  - Sliding-Window Rate Limiting (`HTTP 429`), opsiyonel API anahtarı doğrulaması (`HTTP 401`) ve 17 senaryolu Pytest güvenlik regresyon paketi
+  - Sliding-Window Rate Limiting (`HTTP 429`), opsiyonel API anahtarı doğrulaması (`HTTP 401`) ve Pytest güvenlik regresyon paketi
   - Tek komutla kurumsal dağıtım için `Dockerfile` ve paylaşımlı volume destekli `docker-compose.yml` mimarisi
+
+- [x] **Faz 6: Streaming, Genişletilmiş Gizli Veri Tespiti ve CI/CD**
+  - OpenAI uyumlu SSE akışı ve parça sınırlarına dayanıklı canlı unmasking (`StreamUnmasker`)
+  - TR IBAN (MOD-97), JWT ve Bearer jeton tespiti; benchmark veri setine eklendi
+  - GitHub Actions: her push'ta `pytest` + benchmark **kalite kapısı** (F1 ≥ %95, P95 gecikme SLA)
+  - Presidio için spaCy modelinin açıkça sabitlenmesi (`SPACY_MODEL`, varsayılan `en_core_web_sm`); Docker'da gizli ~400 MB model indirmesi ortadan kalktı
+  - Jüri sunumu için [`docs/SUNUM_REHBERI.md`](docs/SUNUM_REHBERI.md) (demo senaryosu, beklenen sorular, dürüst sınırlılıklar)
 
 ---
 
@@ -239,7 +249,7 @@ python -m streamlit run dashboard.py
 SOC Paneli: [http://localhost:8501](http://localhost:8501)
 
 #### 3. Otomatik Test ve Regresyon Paketini Çalıştırma
-Testler `conftest.py` sayesinde geçici bir veritabanında izole çalışır, canlı SOC veritabanınızı (`llmops.db`) kirletmez:
+`pytest -q` (27 test) ve `python benchmark.py` her push'ta GitHub Actions üzerinde de çalışır. Testler `conftest.py` sayesinde geçici bir veritabanında izole çalışır, canlı SOC veritabanınızı (`llmops.db`) kirletmez:
 ```bash
 pytest -q
 ```
@@ -253,7 +263,7 @@ pytest -q
 | Metot | Uç Nokta (Endpoint) | Açıklama |
 |---|---|---|
 | `POST` | `/v1/chat/secure` | Detaylı güvenlik, gecikme, PII tür dağılımı ve USD maliyet telemetrisi dönen birincil kurumsal proxy uç noktası. |
-| `POST` | `/v1/chat/completions` | Standart **OpenAI SDK / LangChain** uyumlu çok-turlu (multi-turn) drop-in proxy uç noktası (`X-Guardrail-*` başlıklarıyla). |
+| `POST` | `/v1/chat/completions` | Standart **OpenAI SDK / LangChain** uyumlu çok-turlu (multi-turn) drop-in proxy uç noktası (`X-Guardrail-*` başlıklarıyla). `stream=true` ile SSE akışı desteklenir. |
 | `GET` | `/health` | Sistem sağlık durumu, aktif LLM modu (`simulated` / `live`), kasa oturum sayısı ve rate-limit yapılandırması. |
 | `GET` | `/docs` | Etkileşimli OpenAPI / Swagger dokümantasyonu. |
 
@@ -269,6 +279,7 @@ pytest -q
 | `RATE_LIMIT_REQUESTS` | `30` | Pencere başına izin verilen maksimum istek sayısı (`HTTP 429` koruması). |
 | `RATE_LIMIT_WINDOW_SEC` | `60` | Sliding-window hız sınırlandırma pencere süresi (saniye). |
 | `GATEWAY_API_KEYS` | *(boş)* | Virgülle ayrılmış geçerli Gateway istemci anahtarları. Boşsa kimlik doğrulama kapalıdır. |
+| `SPACY_MODEL` | `en_core_web_sm` | Presidio'nun kullanacağı spaCy modeli (`python -m spacy download <model>` ile kurulmalı). |
 | `SQLITE_DB_PATH` | `llmops.db` | Denetim kayıtlarının (`audit_logs`) tutulduğu SQLite veritabanı yolu. |
 
 ---
@@ -365,15 +376,18 @@ print(response.choices[0].message.content)
 
 Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md) dosyasına bakabilirsiniz.
 
+> [!NOTE]
+> Değerlendirme kümesi küçüktür (50 injection + 10 PII vakası) ve kurallarla birlikte geliştirilmiştir; %100 sonuç bir **genelleme iddiası değil, regresyon tabanıdır**. Bağımsız ve daha büyük bir veri setiyle doğrulama gelecek iştir (bkz. [`docs/SUNUM_REHBERI.md`](docs/SUNUM_REHBERI.md)).
+
 | Değerlendirme Metriği | Akademik / SLA Hedefi | Ölçülen Sonuç (`benchmark.py`) |
 |---|---|---|
 | **Inbound Guard F1-Skoru** (50 Örnek: 25 Saldırı / 25 Meşru) | $> \%95.0$ | **%100.0** (`TP=25, TN=25, FP=0, FN=0`) |
 | **Inbound Guard Precision / Recall** | $> \%95.0$ | **%100.0 / %100.0** |
-| **Outbound Guard PII Maskeleme F1-Skoru** (16 Kurumsal Varlık) | $\%100.0$ | **%100.0** (`TP=16, FP=0, FN=0`) |
+| **Outbound Guard PII Maskeleme F1-Skoru** (19 Kurumsal Varlık) | $\%100.0$ | **%100.0** (`TP=19, FP=0, FN=0`) |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
 | **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **~0.04 ms / ~0.05 ms** |
-| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **~11.34 ms / ~16.80 ms** |
-| **Güvenlik Regresyon Test Paketi (`pytest`)** | $\%100.0$ | **17 / 17 Test Başarılı** |
+| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **~10.17 ms / ~16.63 ms** |
+| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **27 / 27 Test Başarılı** |
 
 ---
 
@@ -381,6 +395,11 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 
 ```plaintext
 llm-firewall-gateway/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                 # Push'ta pytest + benchmark kalite kapısı
+├── docs/
+│   └── SUNUM_REHBERI.md           # Jüri sunumu: demo, beklenen sorular, sınırlılıklar
 ├── .streamlit/
 │   └── config.toml                # Minimalist kurumsal panel tema yapılandırması
 ├── app/
@@ -394,7 +413,8 @@ llm-firewall-gateway/
 │   │   └── vault.py               # Zero-Leakage oturum kasası ve Sliding-Window Rate Limiter
 │   ├── guards/
 │   │   ├── __init__.py
-│   │   ├── pii_guard.py           # Checksum doğrulamalı TCKimlikRecognizer & Presidio PII Motoru
+│   │   ├── pii_guard.py           # Checksum doğrulamalı T.C./IBAN tanıyıcıları, JWT/Bearer & Presidio PII Motoru
+│   │   ├── stream_unmasker.py     # SSE akışı için parça-sınırı güvenli canlı unmasking tamponu
 │   │   └── injection_guard.py     # Unicode NFKC normalizasyonlu 10 Katmanlı Tehdit Motoru
 │   ├── services/
 │   │   ├── __init__.py
@@ -418,6 +438,7 @@ llm-firewall-gateway/
 ├── test_phase3.py                 # Faz 3 Vault, LLM servisi ve Token testleri
 ├── test_phase5.py                 # Faz 5 OpenAI SDK uyumu, Maliyet, PII Tür ve Rate Limit testleri
 ├── test_security_regressions.py   # Güvenlik regresyon testleri (Unicode/zero-width, 502 vault purge vb.)
+├── test_phase6_pii.py             # Faz 6 TR IBAN (MOD-97), JWT ve Bearer jeton testleri
 ├── Dockerfile                     # Kurumsal konteyner imajı tanımı
 ├── docker-compose.yml             # Gateway + SOC Dashboard çoklu servis orkestrasyonu
 └── README.md                      # Proje dokümantasyonu

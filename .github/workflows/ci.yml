@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Bağımlılıkları yükle
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Birim, entegrasyon ve güvenlik regresyon testleri
+        run: pytest -q
+
+      - name: Akademik benchmark ve kalite kapısı (F1 >= 95, P95 gecikme SLA)
+        run: python benchmark.py
+
+      - name: Benchmark raporunu kaydet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            BENCHMARK_REPORT.md
+            benchmarks/latest_results.json

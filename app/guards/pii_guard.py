@@ -1,6 +1,8 @@
+import os
 import re
 from typing import Dict, Optional, Tuple, List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 
 
@@ -54,7 +56,14 @@ class PIIGuard:
     ]
 
     def __init__(self):
-        self.analyzer = AnalyzerEngine()
+        # Model açıkça seçilir: Presidio varsayılanı en_core_web_lg (~400 MB) sessizce indirmeye çalışır.
+        # Maskeleme ağırlıklı olarak regex/algoritmik olduğundan küçük model yeterlidir.
+        model_name = os.getenv("SPACY_MODEL", "en_core_web_sm")
+        nlp_engine = NlpEngineProvider(nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": model_name}],
+        }).create_engine()
+        self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
         self.anonymizer = AnonymizerEngine()
         self._add_custom_recognizers()
         # Spacy/Presidio boru hattını başlatırken bir kez ısıt (cold-start gecikmesini önler)

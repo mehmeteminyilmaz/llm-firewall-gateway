@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 from typing import List
 
@@ -15,7 +15,7 @@ def _csv(value: str) -> List[str]:
 
 class Settings:
     PROJECT_NAME: str = "Enterprise LLM Guardrail & Gateway"
-    VERSION: str = "1.1.0"
+    VERSION: str = "1.2.0"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
@@ -34,8 +34,8 @@ class Settings:
     RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "30"))
     RATE_LIMIT_WINDOW_SEC: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
-    # Gateway kimlik doğrulaması: boş bırakılırsa kapalıdır (geliştirme modu).
-    # Örn: GATEWAY_API_KEYS=team-a-key,team-b-key
+    # Gateway kimlik doÄŸrulamasÄ±: boÅŸ bÄ±rakÄ±lÄ±rsa kapalÄ±dÄ±r (geliÅŸtirme modu).
+    # Ã–rn: GATEWAY_API_KEYS=team-a-key,team-b-key
     GATEWAY_API_KEYS: List[str] = _csv(os.getenv("GATEWAY_API_KEYS", ""))
 
 

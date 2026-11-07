@@ -307,8 +307,34 @@ def run_all_benchmarks():
     print(f"    -> {RESULTS_JSON_PATH}")
     print(f"    -> {REPORT_MD_PATH}")
     print("=" * 72)
+    return full_results
+
+
+# CI kalite kapısı: bu eşiklerin altına düşen sürümler başarısız sayılır
+QUALITY_GATE = {"injection_f1": 95.0, "pii_f1": 95.0, "inbound_p95_ms": 5.0, "outbound_p95_ms": 50.0}
+
+
+def check_quality_gate(results: Dict[str, Any]) -> List[str]:
+    inj, pii = results["injection_benchmark"], results["pii_benchmark"]
+    failures = []
+    if inj["f1_score"] < QUALITY_GATE["injection_f1"]:
+        failures.append(f"Injection F1 %{inj['f1_score']} < %{QUALITY_GATE['injection_f1']}")
+    if pii["f1_score"] < QUALITY_GATE["pii_f1"]:
+        failures.append(f"PII F1 %{pii['f1_score']} < %{QUALITY_GATE['pii_f1']}")
+    if inj["p95_latency_ms"] > QUALITY_GATE["inbound_p95_ms"]:
+        failures.append(f"Inbound P95 {inj['p95_latency_ms']} ms > {QUALITY_GATE['inbound_p95_ms']} ms")
+    if pii["p95_latency_ms"] > QUALITY_GATE["outbound_p95_ms"]:
+        failures.append(f"Outbound P95 {pii['p95_latency_ms']} ms > {QUALITY_GATE['outbound_p95_ms']} ms")
+    return failures
 
 
 if __name__ == "__main__":
-    run_all_benchmarks()
+    import sys
+
+    res = run_all_benchmarks()
+    problems = check_quality_gate(res)
+    if problems:
+        print("[KALİTE KAPISI BAŞARISIZ]\n  - " + "\n  - ".join(problems))
+        sys.exit(1)
+    print("[KALİTE KAPISI GEÇTİ]")
 
