@@ -1,6 +1,8 @@
+import asyncio
+import json
 import os
 import httpx
-from typing import Dict, Any, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 
 # 1K (1.000) Token başına tahmini USD maliyet tablosu (Kurumsal LLMOps Maliyet İzleme)
@@ -41,6 +43,73 @@ class LLMService:
         rates = MODEL_PRICING_PER_1K.get(model, MODEL_PRICING_PER_1K["gpt-3.5-turbo"])
         cost = (prompt_tokens / 1000.0) * rates["prompt"] + (completion_tokens / 1000.0) * rates["completion"]
         return round(cost, 6)
+
+    async def stream_response(
+        self,
+        model: Optional[str] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        temperature: float = 0.3,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Yanıtı parça parça üretir. Olaylar:
+          {"type": "delta", "text": str}
+          {"type": "usage", "prompt_tokens": int, "completion_tokens": int}
+        Hedef LLM'e ulaşılamazsa UpstreamLLMError fırlatır (ilk parça alınmadan önce).
+        """
+        selected_model = model or self.default_model
+        messages = messages or []
+
+        if not self.api_key:
+            last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+            content = f"Sistem güvenli yanıtı: Talebiniz işlendi. Referans: {last_user}"
+            # Küçük parçalar yer tutucuların parça sınırlarına denk gelmesini de simüle eder
+            for i in range(0, len(content), 8):
+                yield {"type": "delta", "text": content[i:i + 8]}
+                await asyncio.sleep(0)
+            yield {
+                "type": "usage",
+                "prompt_tokens": sum(len(m["content"].split()) for m in messages),
+                "completion_tokens": 12,
+            }
+            return
+
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": selected_model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream("POST", self.api_url, json=payload, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        raise UpstreamLLMError(f"Upstream LLM returned HTTP {resp.status_code}")
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            obj = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        usage = obj.get("usage")
+                        if usage:
+                            yield {
+                                "type": "usage",
+                                "prompt_tokens": usage.get("prompt_tokens", 0),
+                                "completion_tokens": usage.get("completion_tokens", 0),
+                            }
+                        for choice in obj.get("choices", []):
+                            text = (choice.get("delta") or {}).get("content")
+                            if text:
+                                yield {"type": "delta", "text": text}
+        except httpx.HTTPError as exc:
+            raise UpstreamLLMError(f"Upstream LLM unreachable: {exc.__class__.__name__}") from exc
 
     async def generate_response(
         self,

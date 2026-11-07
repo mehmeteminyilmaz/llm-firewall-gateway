@@ -1,8 +1,11 @@
+import json
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -11,6 +14,7 @@ from app.core.db import log_request
 from app.core.vault import vault_store
 from app.guards.injection_guard import InjectionGuard
 from app.guards.pii_guard import PIIGuard
+from app.guards.stream_unmasker import StreamUnmasker
 from app.services.llm_service import LLMService, UpstreamLLMError
 
 router = APIRouter(tags=["LLM Secure Proxy"])
@@ -90,21 +94,21 @@ def resolve_client(request: Request) -> str:
 # ---------------------------------------------------------------------------
 # Ortak güvenli işlem hattı
 # ---------------------------------------------------------------------------
-async def _guarded_completion(
-    messages: List[Dict[str, str]],
-    model: str,
-    client_id: str,
-    response: Response,
-    temperature: float = 0.3,
-) -> ChatResponse:
-    """
-    0. Rate Limiting (HTTP 429)
-    1. Inbound Guard: güvenilmeyen tüm mesajlarda injection taraması (HTTP 403)
-    2. Outbound Guard: tüm mesajlarda PII maskeleme + Zero-Leakage Vault
-    3. Asenkron LLM çağrısı (hata durumunda HTTP 502)
-    4. Unmasking + kasanın HER DURUMDA imhası (try/finally)
-    5. Zero-content audit log (threadpool üzerinden, event loop'u bloklamadan)
-    """
+@dataclass
+class _Ctx:
+    model: str
+    masked_messages: List[Dict[str, str]]
+    mapping: Dict[str, str]
+    vault_id: str
+    pii_count: int
+    pii_types: Dict[str, int]
+    threat_score: float
+    request_start: float
+    rate_remaining: int
+
+
+async def _prepare(messages: List[Dict[str, str]], model: str, client_id: str, response: Response) -> _Ctx:
+    """Rate limit, boyut, Inbound Guard ve Outbound Guard (maskeleme + kasa). Normal ve stream için ortaktır."""
     request_start = time.perf_counter()
     model = model or llm_service.default_model
 
@@ -162,6 +166,29 @@ async def _guarded_completion(
     pii_count = len(mapping)
     pii_types = pii_guard.summarize_entity_types(mapping)
     vault_id = vault_store.store(mapping)
+    return _Ctx(model=model, masked_messages=masked_messages, mapping=mapping, vault_id=vault_id,
+                pii_count=pii_count, pii_types=pii_types, threat_score=threat_score,
+                request_start=request_start, rate_remaining=remaining)
+
+
+async def _guarded_completion(
+    messages: List[Dict[str, str]],
+    model: str,
+    client_id: str,
+    response: Response,
+    temperature: float = 0.3,
+) -> ChatResponse:
+    """
+    0. Rate Limiting (HTTP 429)
+    1. Inbound Guard: güvenilmeyen tüm mesajlarda injection taraması (HTTP 403)
+    2. Outbound Guard: tüm mesajlarda PII maskeleme + Zero-Leakage Vault
+    3. Asenkron LLM çağrısı (hata durumunda HTTP 502)
+    4. Unmasking + kasanın HER DURUMDA imhası (try/finally)
+    5. Zero-content audit log (threadpool üzerinden, event loop'u bloklamadan)
+    """
+    ctx = await _prepare(messages, model, client_id, response)
+    model, masked_messages, mapping, vault_id = ctx.model, ctx.masked_messages, ctx.mapping, ctx.vault_id
+    pii_count, pii_types, threat_score, request_start = ctx.pii_count, ctx.pii_types, ctx.threat_score, ctx.request_start
 
     # 3-4. LLM çağrısı + kasanın her koşulda imhası
     llm_start = time.perf_counter()
@@ -215,6 +242,116 @@ async def _guarded_completion(
 
 
 # ---------------------------------------------------------------------------
+# Streaming (SSE) hattı: akış içi canlı unmasking
+# ---------------------------------------------------------------------------
+def _sse(payload: Dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+async def _stream_completion(
+    messages: List[Dict[str, str]],
+    model: str,
+    client_id: str,
+    response: Response,
+    temperature: Optional[float] = 0.3,
+) -> StreamingResponse:
+    """
+    OpenAI uyumlu SSE akışı. Maskeli parçalar istemciye ulaşmadan önce StreamUnmasker ile
+    canlı olarak gerçek veriyle değiştirilir. Kasa, akış başlar başlamaz imha edilir; eşleme
+    yalnızca bu isteğin bellekteki yerel kapsamında yaşar (Zero-Leakage).
+    """
+    ctx = await _prepare(messages, model or llm_service.default_model, client_id, response)
+    model = ctx.model
+
+    stream = llm_service.stream_response(
+        model=model, messages=ctx.masked_messages, temperature=temperature if temperature is not None else 0.3
+    )
+
+    # İlk olayı akış başlamadan al: upstream erişilemezse temiz bir HTTP 502 dönebilelim
+    llm_start = time.perf_counter()
+    try:
+        first_event = await stream.__anext__()
+    except StopAsyncIteration:
+        first_event = None
+    except UpstreamLLMError as exc:
+        vault_store.retrieve_and_purge(ctx.vault_id)
+        overhead_ms = round((time.perf_counter() - ctx.request_start) * 1000, 2)
+        await run_in_threadpool(
+            log_request, "UPSTREAM_ERROR", ctx.threat_score, ctx.pii_count, overhead_ms,
+            0.0, 0, 0.0, ctx.pii_types, model,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"error": "Upstream LLM Error", "message": str(exc)},
+        )
+
+    # Kasayı hemen imha et; eşleme artık yalnızca bu akışın yerel değişkeninde
+    mapping = vault_store.retrieve_and_purge(ctx.vault_id) or ctx.mapping
+    prepare_ms = round((llm_start - ctx.request_start) * 1000, 2)
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created = int(time.time())
+
+    def chunk(delta: Dict, finish: Optional[str] = None) -> str:
+        return _sse({
+            "id": completion_id, "object": "chat.completion.chunk", "created": created, "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        })
+
+    async def events():
+        if first_event is not None:
+            yield first_event
+        async for ev in stream:
+            yield ev
+
+    async def body():
+        unmasker = StreamUnmasker(mapping)
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        out_chars = 0
+        outcome = "SUCCESS"
+        try:
+            yield chunk({"role": "assistant", "content": ""})
+            async for ev in events():
+                if ev["type"] == "delta":
+                    text = unmasker.feed(ev["text"])
+                    if text:
+                        out_chars += len(text)
+                        yield chunk({"content": text})
+                elif ev["type"] == "usage":
+                    usage = {"prompt_tokens": ev["prompt_tokens"], "completion_tokens": ev["completion_tokens"]}
+            tail = unmasker.flush()
+            if tail:
+                out_chars += len(tail)
+                yield chunk({"content": tail})
+            yield chunk({}, finish="stop")
+            yield "data: [DONE]\n\n"
+        except UpstreamLLMError as exc:
+            outcome = "UPSTREAM_ERROR"
+            yield _sse({"error": {"type": "upstream_error", "message": str(exc)}})
+        except BaseException:
+            outcome = "CLIENT_ABORTED"
+            raise
+        finally:
+            llm_ms = round((time.perf_counter() - llm_start) * 1000, 2)
+            p_tok = usage["prompt_tokens"] or sum(len(m["content"].split()) for m in ctx.masked_messages)
+            c_tok = usage["completion_tokens"] or max(1, out_chars // 4)
+            cost = llm_service.calculate_cost(p_tok, c_tok, model) if outcome == "SUCCESS" else 0.0
+            # İptal/kapanış sırasında güvenli olması için senkron, hızlı yazım
+            log_request(outcome, ctx.threat_score, ctx.pii_count, prepare_ms, llm_ms,
+                        p_tok + c_tok if outcome == "SUCCESS" else 0, cost, ctx.pii_types, model)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "X-RateLimit-Remaining": str(ctx.rate_remaining),
+        "X-Guardrail-Status": "SUCCESS",
+        "X-Guardrail-Threat-Score": str(ctx.threat_score),
+        "X-Guardrail-PII-Masked": str(ctx.pii_count),
+        "X-Guardrail-Overhead-Ms": str(prepare_ms),
+    }
+    return StreamingResponse(body(), media_type="text/event-stream", headers=headers)
+
+
+# ---------------------------------------------------------------------------
 # Endpoint'ler
 # ---------------------------------------------------------------------------
 @router.post("/chat/secure", response_model=ChatResponse)
@@ -238,10 +375,12 @@ async def openai_compatible_completions(
     Tüm mesaj geçmişi (system/user/assistant) korunarak, maskelenmiş şekilde hedef LLM'e iletilir.
     """
     if req.stream:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "Streaming Not Supported",
-                    "message": "stream=true is not supported yet; the full response must be unmasked before delivery."},
+        return await _stream_completion(
+            messages=[{"role": m.role, "content": m.content} for m in req.messages],
+            model=req.model,
+            client_id=client_id,
+            response=response,
+            temperature=req.temperature,
         )
 
     secure_res = await _guarded_completion(
