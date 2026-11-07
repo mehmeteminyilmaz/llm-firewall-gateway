@@ -43,7 +43,7 @@ Kurumlar verimliliği artırmak amacıyla LLM (OpenAI, Anthropic, yerel vLLM/Oll
 - Unicode/Zero-Width gizleme (obfuscation) saldırılarını normalize ederek gelen jailbreak denemelerini **~0.04 ms** içinde engeller (**Inbound Guard - HTTP 403 Forbidden**),
 - LLM'den dönen yanıtta maskeleri güvenle çözer ve hedef LLM hata verse dahi (`HTTP 502`) kasayı derhal imha eder (**Reversible Unmasking & Fail-Safe Auto-Purge**),
 - Standart **OpenAI SDK (`/v1/chat/completions`)** uyumluluğu sayesinde mevcut çok-turlu (multi-turn) uygulamalara kod değişikliği gerektirmeden entegre olur; **`stream=true` (SSE) akışında yer tutucuları canlı olarak çözer**,
-- **Outbound Response Guardrail** ile model çıktısında canary token (honeypot) ifşasını, sistem talimatı sızıntılarını ve tehlikeli exploit çıktılarını anında tespit ederek sansürler,
+- **Outbound Response Guardrail** ile model çıktısında canary token (honeypot) ifşasını, sistem talimatı sızıntılarını ve ters kabuk / exploit komutlarını anında tespit ederek sansürler,
 - Gateway ek gecikmesini (`gateway_overhead_ms`), LLM gecikmesini (`llm_latency_ms`), token tüketimini ve **model bazlı USD maliyetini (`estimated_cost_usd`)** anlık raporlar.
 
 ---
@@ -83,7 +83,7 @@ flowchart TB
         %% Outbound Guard (PII)
         subgraph OutboundGuard ["Outbound Guard Katmanı (PII Maskeleme)"]
             direction TB
-            PatternEngine["Regex & Algoritmik Kural Motoru<br/>(TCKimlikRecognizer Checksum, Kredi Kartı Luhn, TR Tel, API Key)"]
+            PatternEngine["Regex & Algoritmik Kural Motoru<br/>(TCKimlikRecognizer Checksum, TR IBAN MOD-97, Luhn, API Key)"]
             NEREngine["Microsoft Presidio & Spacy NER Motoru<br/>(E-posta, Telefon, Şahıs Verileri)"]
             ConflictResolver["Çakışma Önleyici, Tür Analitiği & Çok-Mesajlı Yer Tutucu Eşleyici<br/>([TC_KIMLIK_1], [EMAIL_ADDRESS_2], vb.)"]
             
@@ -94,6 +94,11 @@ flowchart TB
         %% Unmasking Engine
         subgraph UnmaskEngine ["Tersine Eşleme Katmanı (Reversible Unmasking)"]
             RestoreLogic["Metin İçi Yer Tutucu Çözümleme & Fail-Safe Auto-Purge<br/>(try/finally ile Her Koşulda Kasa İmhası)"]
+        end
+
+        %% Response Guard Engine
+        subgraph ResponseGuardLayer ["Outbound Response Guardrail Katmanı"]
+            ResponseGuard["ResponseGuard Motoru<br/>- Honeypot Canary Token Taraması (CANARY_SEC_*)<br/>- Sistem Talimatı Sızıntısı & Exploit Payload Taraması"]
         end
 
         %% LLMOps Engine
@@ -133,12 +138,13 @@ flowchart TB
 
     UpstreamLLM -->|"3. Maskeli Model Yanıtı (veya HTTP 502)"| RestoreLogic
     RedisVault -.->|"Kasa Değerlerini Getir ve Derhal Sil"| RestoreLogic
-    RestoreLogic --> ResponseGuard["Outbound Response Guard Katmanı<br/>(Canary Token / Leakage / Exploit Check)"]
+    RestoreLogic --> ResponseGuard
     ResponseGuard -- "İhlal Yok (Güvenli Yanıt)" --> ClientApp
     ResponseGuard -- "İhlal Tespit Edildi (RESPONSE_BLOCKED)" --> ClientApp
 
     %% Telemetri ve Loglama Bağlantıları
     BlockResp -.->|"Güvenlik İhlal Olayı"| AuditDB
+    ResponseGuard -.->|"Yanıt Engelleme Olayı"| AuditDB
     LatencyTracker -.-> AuditDB
     TokenCounter -.-> AuditDB
     AuditDB -.-> Dashboard
@@ -165,15 +171,15 @@ flowchart TB
 - **PII Tür Analitiği (`pii_types`):** Yakalanan her varlık türü (`TC_KIMLIK`, `TR_IBAN`, `EMAIL_ADDRESS`, `API_KEY`, `JWT_TOKEN`, `BEARER_TOKEN`, `PHONE_NUMBER`, `CREDIT_CARD`) ayrı ayrı sayılarak denetim veritabanına ve SOC paneline aktarılır.
 - **Fail-Safe Zero-Leakage Memory Vault:** Eşleme tablosu istemciye açık olarak dönülmez. Oturum bazlı UUID ile sunucu belleğinde tutulur ve `try/finally` garantisiyle (hedef LLM çökse veya zaman aşımına uğrasa bile) işlem sonunda bellekten derhal silinir.
 
-### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
-- **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
-- **Sistem Talimatı İfşa Taraması (Instruction Leakage):** Modelin 'My initial instructions are...', 'Sistem talimatlarım şunlardır:' gibi gizli yönergeleri dışarı sızdırması engellenir.
-- **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
-
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
 - **Streaming (SSE) ve Akış İçi Unmasking:** `stream=true` isteklerinde yanıt OpenAI `chat.completion.chunk` formatında akar. LLM bir yer tutucuyu parçalara bölse bile (`[TC_KI` + `MLIK_1]`) `StreamUnmasker` yarım kalan kuyruğu (en fazla 48 karakter) tamponlayıp tamamlanınca gerçek veriyle değiştirir; kasa akış başlar başlamaz imha edilir. Upstream erişilemezse akış başlamadan temiz `HTTP 502` döner.
 - **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
+
+### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
+- **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
+- **Sistem Talimatı İfşa Taraması (Instruction Leakage):** Modelin 'My initial instructions are...', 'Sistem talimatlarım şunlardır:' gibi gizli yönergeleri dışarı sızdırması engellenir.
+- **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
 
 ---
 
@@ -205,19 +211,17 @@ flowchart TB
   - Model bazlı gerçek zamanlı USD maliyet (`estimated_cost_usd`) hesaplaması ve hassas veri tür dağılımı (`pii_types`) analitiği
   - Sliding-Window Rate Limiting (`HTTP 429`), opsiyonel API anahtarı doğrulaması (`HTTP 401`) ve Pytest güvenlik regresyon paketi
   - Tek komutla kurumsal dağıtım için `Dockerfile` ve paylaşımlı volume destekli `docker-compose.yml` mimarisi
-
-- [x] **Faz 7: Outbound Response Guardrail (Çıktı Güvenliği & Sızıntı Kalkanı)**
-  - Dinamik oturum bazlı Canary Token (Honeypot) enjeksiyonu ve sızıntı tespiti
-  - Verbatim sistem talimatı sızıntısı kalıpları (Instruction Leakage Echo)
-  - Yüksek riskli reverse-shell / exploit payload çıktı sansürleme ve akış içi kesme (`content_filter`)
-  - Denetim tablosunda ve SOC Paneli Pasta/Kırılım grafiklerinde `RESPONSE_BLOCKED` desteği
-
 - [x] **Faz 6: Streaming, Genişletilmiş Gizli Veri Tespiti ve CI/CD**
   - OpenAI uyumlu SSE akışı ve parça sınırlarına dayanıklı canlı unmasking (`StreamUnmasker`)
   - TR IBAN (MOD-97), JWT ve Bearer jeton tespiti; benchmark veri setine eklendi
   - GitHub Actions: her push'ta `pytest` + benchmark **kalite kapısı** (F1 ≥ %95, P95 gecikme SLA)
   - Presidio için spaCy modelinin açıkça sabitlenmesi (`SPACY_MODEL`, varsayılan `en_core_web_sm`); Docker'da gizli ~400 MB model indirmesi ortadan kalktı
   - Jüri sunumu için [`docs/SUNUM_REHBERI.md`](docs/SUNUM_REHBERI.md) (demo senaryosu, beklenen sorular, dürüst sınırlılıklar)
+- [x] **Faz 7: Outbound Response Guardrail (Çıktı Güvenliği & Sızıntı Kalkanı)**
+  - Dinamik oturum bazlı Canary Token (Honeypot) enjeksiyonu ve sızıntı tespiti
+  - Verbatim sistem talimatı sızıntısı kalıpları (Instruction Leakage Echo)
+  - Yüksek riskli reverse-shell / exploit payload çıktı sansürleme ve akış içi kesme (`content_filter`)
+  - Denetim tablosunda ve SOC Paneli Pasta/Kırılım grafiklerinde `RESPONSE_BLOCKED` desteği
 
 ---
 
