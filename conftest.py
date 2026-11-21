@@ -11,6 +11,9 @@ from pathlib import Path
 # app modülleri import edilmeden ÖNCE ayarlanmalı
 os.environ["SQLITE_DB_PATH"] = str(Path(tempfile.gettempdir()) / "llm_guardrail_test.db")
 os.environ.setdefault("GATEWAY_API_KEYS", "")
+# Birim/entegrasyon testleri yerel .env dosyasındaki canlı LLM ayarlarından etkilenmesin
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["LLM_API_KEY"] = ""
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pytest  # noqa: E402

@@ -12,6 +12,10 @@ MODEL_PRICING_PER_1K: Dict[str, Dict[str, float]] = {
     "gpt-4o-mini": {"prompt": 0.00015, "completion": 0.0006},
     "claude-3-5-sonnet": {"prompt": 0.0030, "completion": 0.0150},
     "llama-3-70b": {"prompt": 0.0006, "completion": 0.0008},
+    "llama-3.3-70b-versatile": {"prompt": 0.00059, "completion": 0.00079},
+    "qwen2.5:1.5b": {"prompt": 0.0001, "completion": 0.0002},
+    "llama3.2:1b": {"prompt": 0.0001, "completion": 0.0002},
+    "gemma2:2b": {"prompt": 0.0001, "completion": 0.0002},
 }
 
 

@@ -191,6 +191,14 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {{ fil
 }}
 .res-card .rc-head {{ font-size: .78rem; font-weight: 700; color: #F8FAFC; }}
 .res-card .rc-meta {{ font-size: .73rem; color: #94A3B8; margin-top: .2rem; }}
+.flow-box {{
+    background: #111C33; border: 1px solid #263554; border-radius: 8px;
+    padding: .55rem .7rem; margin: .35rem 0; font-size: .76rem; color: #E2E8F0; line-height: 1.4;
+}}
+.flow-box .fb-lbl {{
+    font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+    color: #60A5FA; margin-bottom: .2rem;
+}}
 section[data-testid="stSidebar"] [data-testid="stExpander"] {{
     background: #1E293B; border: 1px solid #334155; border-radius: 8px;
 }}
@@ -323,11 +331,12 @@ def render_test_result(code, body) -> None:
         color, head = WARN, "200 · Yanıt Engellendi"
         meta = f"Tehdit skoru: {body.get('threat_score', 1.0):.2f} · {body.get('gateway_overhead_ms', 0)} ms"
     elif code == 200:
-        color, head = OK, "200 · Onaylandı"
+        mode_tag = "CANLI LLM" if (is_dict and body.get("llm_mode") == "live") else "SİMÜLASYON"
+        color, head = OK, f"200 · Onaylandı ({mode_tag})"
         pii_c = body.get("pii_detected_count", 0) if is_dict else 0
         gw_ms = body.get("gateway_overhead_ms", 0) if is_dict else 0
-        cost = body.get("estimated_cost_usd", 0.0) if is_dict else 0.0
-        meta = f"Maskelenen PII: {pii_c} · {gw_ms} ms · ${cost:.5f}"
+        llm_ms = body.get("llm_latency_ms", 0) if is_dict else 0
+        meta = f"PII: {pii_c} · Gateway: {gw_ms} ms · LLM: {llm_ms} ms"
     elif code == 403:
         color, head = ALERT, "403 · Saldırı Engellendi"
         det = body.get("detail", {}) if is_dict else {}
@@ -347,6 +356,19 @@ def render_test_result(code, body) -> None:
         f'<div class="rc-meta">{meta}</div></div>',
         unsafe_allow_html=True,
     )
+    if code == 200 and is_dict:
+        masked_p = body.get("masked_prompt") or ""
+        resp_txt = body.get("response") or ""
+        if masked_p:
+            st.markdown(
+                f'<div class="flow-box"><div class="fb-lbl">1. LLM\'e Giden Maskeli Metin</div>{masked_p}</div>',
+                unsafe_allow_html=True,
+            )
+        if resp_txt:
+            st.markdown(
+                f'<div class="flow-box"><div class="fb-lbl">2. LLM Yanıtı (Etiketler Geri Çözüldü)</div>{resp_txt}</div>',
+                unsafe_allow_html=True,
+            )
     with st.expander("JSON yanıt detayı", expanded=False):
         if isinstance(body, (dict, list)):
             st.json(body)
@@ -366,7 +388,16 @@ PRESETS = {
     "Özel metin": "",
 }
 
-MODELS = ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet", "llama-3-70b"]
+MODELS = [
+    "qwen2.5:1.5b",
+    "llama3.2:1b",
+    "gemma2:2b",
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-3.5-turbo",
+    "claude-3-5-sonnet",
+    "llama-3-70b",
+]
 PERIODS = {"Tümü": None, "Son 1 saat": 1, "Son 24 saat": 24, "Son 7 gün": 24 * 7}
 
 df_all = load_data()
@@ -383,7 +414,7 @@ with st.sidebar:
         if prompt.strip():
             try:
                 headers = {"Authorization": f"Bearer {GATEWAY_API_KEY}"} if GATEWAY_API_KEY else {}
-                with httpx.Client(timeout=10.0) as client:
+                with httpx.Client(timeout=45.0) as client:
                     resp = client.post(GATEWAY_URL, json={"prompt": prompt, "model": selected_model}, headers=headers)
                 try:
                     payload = resp.json()
