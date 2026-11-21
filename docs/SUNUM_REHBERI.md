@@ -28,7 +28,11 @@ Hazırlık: `docker compose up --build` (veya iki terminalde `uvicorn` + `stream
 5. **Drop-in uyumluluk:** README Bölüm 7-C'deki `openai` istemci kodunu çalıştır (yalnızca `base_url` değişti). `stream=True` ile **kelime kelime akış** sırasında yer tutucuların canlı çözüldüğünü göster.
 6. **Hata dayanıklılığı:** Upstream'i kapat → istemciye temiz `502`; `/health` içinde `active_vault_sessions: 0` (kasada PII kalmadı).
 7. **Çıktı Güvenliği (Response Guard & Canary Token):** Model sistem promptundaki gizli canary token'ı veya reverse-shell exploit kodunu sızdırmaya kalkışırsa yanıtın anında `RESPONSE_BLOCKED` olarak sansürlendiğini gösterin.
-8. **Panel:** PII tür dağılımı, gecikme grafiği, `RESPONSE_BLOCKED` pasta dilimi, maliyet, benchmark kartları.
+8. **4 Sekmeli SOC Paneli:**
+   - **Genel Bakış:** Canlı Gateway sağlık çubuğu, PII tür dağılımı, gecikme grafiği, `RESPONSE_BLOCKED` pasta dilimi, model bazlı kullanım ve maliyet tablosu.
+   - **Denetim Kaydı:** Durum filtresi, tehdit skoru ilerleme çubuğu ve CSV/JSON dışa aktarma.
+   - **Model Performansı:** 3 farklı LLM (`llama3.2:1b`, `qwen2.5:1.5b`, `gemma2:2b`) üzerinde gecikme, token ve GPU/VRAM karşılaştırması.
+   - **Benchmark:** Kategori bazlı doğruluk ve PII varlık doğrulama grafikleri.
 
 ---
 
@@ -54,6 +58,12 @@ C: Inbound ~0.04 ms, Outbound (NER dahil) ~10 ms ortalama, P95 ~17 ms; hedef < 5
 
 **S: "Streaming'de yer tutucu iki parçaya bölünürse?"**
 C: `StreamUnmasker` yarım kalmış `[...` kuyruğunu en fazla 48 karakter tamponlar; her olası parça boyutu için test yazıldı (`test_stream_unmasker_handles_every_chunk_boundary`).
+
+**S: "Farklı modellerle denedin mi? GPU ve token kullanımını nasıl etkiliyor?"**
+C: Evet, `benchmark_models.py` ile RTX 3050 GPU üzerinde 3 yerel model (`llama3.2:1b`, `qwen2.5:1.5b`, `gemma2:2b`) hem doğrudan hem Gateway üzerinden ölçüldü:
+- **Gecikme:** Gateway'in kendi ek süresi yalnızca **6-14 ms** (toplam yanıt süresinin %1-2'si).
+- **GPU / VRAM:** Guardrail katmanları tamamen **CPU'da** çalışır; tepe VRAM kullanımı doğrudan çağrıyla birebir aynıdır. Üstelik engellenen saldırılar modele hiç ulaşmadığı için **%0 GPU** ve **0 token** harcar.
+- **Token:** Canary token ve sistem yönergesi istek başına yaklaşık **+11 ila +32 prompt token** ekler; PII maskeleme ise uzun IBAN/anahtarları kısa etiketlerle değiştirdiği için bazen token sayısını azaltır.
 
 ---
 

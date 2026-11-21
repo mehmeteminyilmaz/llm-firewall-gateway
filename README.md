@@ -438,7 +438,7 @@ Canlı SSE akışında (`stream=true`) ise yanıt ortasında zararlı içerik be
 Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md) dosyasına bakabilirsiniz.
 
 > [!NOTE]
-> Değerlendirme kümesi küçüktür (50 injection + 10 PII vakası) ve kurallarla birlikte geliştirilmiştir; %100 sonuç bir **genelleme iddiası değil, regresyon tabanıdır**. Bağımsız ve daha büyük bir veri setiyle doğrulama gelecek iştir (bkz. [`docs/SUNUM_REHBERI.md`](docs/SUNUM_REHBERI.md)).
+> Değerlendirme kümesi küçüktür (50 injection örneği + 10 vakada 19 PII varlığı) ve kurallarla birlikte geliştirilmiştir; %100 sonuç bir **genelleme iddiası değil, regresyon tabanıdır**. Bağımsız ve daha büyük bir veri setiyle doğrulama gelecek iştir (bkz. [`docs/SUNUM_REHBERI.md`](docs/SUNUM_REHBERI.md)).
 
 | Değerlendirme Metriği | Akademik / SLA Hedefi | Ölçülen Sonuç (`benchmark.py`) |
 |---|---|---|

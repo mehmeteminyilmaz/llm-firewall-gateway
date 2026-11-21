@@ -137,8 +137,9 @@ def bench_model(model):
 
 
 def main(models):
+    tmp_db = ROOT / "benchmarks" / "_model_bench.db"
     env = dict(os.environ, LLM_API_KEY="ollama", LLM_API_URL=OLLAMA, RATE_LIMIT_REQUESTS="100000",
-               SQLITE_DB_PATH=str(ROOT / "benchmarks" / "_model_bench.db"), UPSTREAM_TIMEOUT_SEC="300")
+               SQLITE_DB_PATH=str(tmp_db), UPSTREAM_TIMEOUT_SEC="300")
     gw = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(GW_PORT)], cwd=ROOT, env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -154,6 +155,12 @@ def main(models):
             results.append(bench_model(m))
     finally:
         gw.terminate()
+        gw.wait(timeout=5)
+        if tmp_db.exists():
+            try:
+                tmp_db.unlink()
+            except OSError:
+                pass
     out = ROOT / "benchmarks" / "model_results.json"
     out.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[+] {out}")
