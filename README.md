@@ -201,6 +201,7 @@ flowchart TB
 - [x] **Faz 4a: LLMOps SOC Dashboard ve Audit Logging**
   - Non-blocking threadpool üzerinde çalışan SQLite denetim logu (`audit_logs`) — prompt içeriği kaydedilmez
   - Streamlit SOC paneli: KPI kartları, güvenlik dağılımı, gecikme, tehdit skoru ve PII tür dağılım grafikleri
+  - Sekmeli profesyonel arayüz (Genel Bakış, Denetim Kaydı, Model Performansı, Benchmark), canlı Gateway sağlık çubuğu, zaman/model filtreleri, otomatik yenileme ve CSV/JSON dışa aktarma
   - Panel üzerinden hedef model seçerek canlı saldırı/meşru istek gönderme
 - [x] **Faz 4b: Benchmark Testleri ve Akademik Değerlendirme**
   - *JailbreakBench* ve *InfiBench / OWASP LLM01* uyumlu 50 örnekli veri seti üzerinde sınıflandırma (Accuracy, Precision, Recall, F1) ölçümleri
@@ -489,8 +490,10 @@ llm-firewall-gateway/
 │   └── main.py                    # FastAPI ana uygulaması, Lifespan ve UTF-8 middleware
 ├── benchmarks/
 │   ├── dataset.json               # JailbreakBench, InfiBench ve Kurumsal PII test veri seti
-│   └── latest_results.json        # Son çalıştırılan benchmark metrik çıktıları
+│   ├── latest_results.json        # Son çalıştırılan benchmark metrik çıktıları
+│   └── model_results.json         # Çok modelli gecikme / token / GPU ölçüm çıktıları
 ├── benchmark.py                   # Faz 4b akademik değerlendirme ve raporlama motoru
+├── benchmark_models.py            # Farklı LLM'lerde Gateway'in gecikme, token ve GPU etkisi ölçümü
 ├── BENCHMARK_REPORT.md            # Otomatik üretilen akademik değerlendirme raporu
 ├── dashboard.py                   # Minimalist Streamlit SOC & Güvenlik Paneli
 ├── generate_traffic.py            # Canlı test trafiği üretici (sentetik istekler)
