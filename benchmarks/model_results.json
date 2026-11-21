@@ -1,0 +1,185 @@
+[
+  {
+    "model": "llama3.2:1b",
+    "pii": {
+      "direct_ms": 429.53,
+      "gateway_total_ms": 7722.61,
+      "gateway_overhead_ms": 13.64,
+      "direct_ms_per_token": 9.76,
+      "gateway_ms_per_token": 13.2,
+      "direct_prompt_tokens": 68.67,
+      "gateway_prompt_tokens": 91.33,
+      "direct_completion_tokens": 44.33,
+      "gateway_completion_tokens": 757,
+      "direct_tokens_per_sec": 102.49,
+      "gateway_tokens_per_sec": 79.59,
+      "pii_masked_avg": 2.33,
+      "direct_gpu": {
+        "gpu_util_avg": 89.7,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 1529.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 90.5,
+        "gpu_util_max": 97.0,
+        "gpu_mem_max_mib": 1529.0
+      }
+    },
+    "clean": {
+      "direct_ms": 343.28,
+      "gateway_total_ms": 812.06,
+      "gateway_overhead_ms": 6.52,
+      "direct_ms_per_token": 10.2,
+      "gateway_ms_per_token": 15.41,
+      "direct_prompt_tokens": 37.67,
+      "gateway_prompt_tokens": 62.56,
+      "direct_completion_tokens": 34.56,
+      "gateway_completion_tokens": 59.44,
+      "direct_tokens_per_sec": 98.41,
+      "gateway_tokens_per_sec": 69.69,
+      "pii_masked_avg": 0,
+      "direct_gpu": {
+        "gpu_util_avg": 85.3,
+        "gpu_util_max": 95.0,
+        "gpu_mem_max_mib": 1529.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 65.9,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 1529.0
+      }
+    },
+    "attack": {
+      "blocked": 6,
+      "total": 6,
+      "block_ms_avg": 10.54,
+      "gpu": {
+        "gpu_util_avg": 0.0,
+        "gpu_util_max": 0.0,
+        "gpu_mem_max_mib": 1529.0
+      }
+    }
+  },
+  {
+    "model": "qwen2.5:1.5b",
+    "pii": {
+      "direct_ms": 508.67,
+      "gateway_total_ms": 661.25,
+      "gateway_overhead_ms": 10.33,
+      "direct_ms_per_token": 9.72,
+      "gateway_ms_per_token": 15.99,
+      "direct_prompt_tokens": 90.67,
+      "gateway_prompt_tokens": 82.22,
+      "direct_completion_tokens": 52.33,
+      "gateway_completion_tokens": 43.67,
+      "direct_tokens_per_sec": 102.9,
+      "gateway_tokens_per_sec": 66.8,
+      "pii_masked_avg": 2.33,
+      "direct_gpu": {
+        "gpu_util_avg": 83.2,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 2730.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 70.6,
+        "gpu_util_max": 95.0,
+        "gpu_mem_max_mib": 2730.0
+      }
+    },
+    "clean": {
+      "direct_ms": 556.87,
+      "gateway_total_ms": 863.99,
+      "gateway_overhead_ms": 7.44,
+      "direct_ms_per_token": 9.93,
+      "gateway_ms_per_token": 15.35,
+      "direct_prompt_tokens": 41.67,
+      "gateway_prompt_tokens": 53,
+      "direct_completion_tokens": 56.78,
+      "gateway_completion_tokens": 64.78,
+      "direct_tokens_per_sec": 100.8,
+      "gateway_tokens_per_sec": 70.35,
+      "pii_masked_avg": 0,
+      "direct_gpu": {
+        "gpu_util_avg": 84.2,
+        "gpu_util_max": 94.0,
+        "gpu_mem_max_mib": 2730.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 51.5,
+        "gpu_util_max": 95.0,
+        "gpu_mem_max_mib": 2730.0
+      }
+    },
+    "attack": {
+      "blocked": 6,
+      "total": 6,
+      "block_ms_avg": 7.63,
+      "gpu": {
+        "gpu_util_avg": 0.0,
+        "gpu_util_max": 0.0,
+        "gpu_mem_max_mib": 2730.0
+      }
+    }
+  },
+  {
+    "model": "gemma2:2b",
+    "pii": {
+      "direct_ms": 1074.97,
+      "gateway_total_ms": 1529.33,
+      "gateway_overhead_ms": 11.58,
+      "direct_ms_per_token": 15.75,
+      "gateway_ms_per_token": 19.93,
+      "direct_prompt_tokens": 73,
+      "gateway_prompt_tokens": 86.33,
+      "direct_completion_tokens": 68.33,
+      "gateway_completion_tokens": 82.67,
+      "direct_tokens_per_sec": 63.49,
+      "gateway_tokens_per_sec": 51.63,
+      "pii_masked_avg": 2.33,
+      "direct_gpu": {
+        "gpu_util_avg": 89.0,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 2133.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 81.4,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 2133.0
+      }
+    },
+    "clean": {
+      "direct_ms": 1334.37,
+      "gateway_total_ms": 1418.94,
+      "gateway_overhead_ms": 7.5,
+      "direct_ms_per_token": 15.75,
+      "gateway_ms_per_token": 19.36,
+      "direct_prompt_tokens": 22,
+      "gateway_prompt_tokens": 54.11,
+      "direct_completion_tokens": 85.44,
+      "gateway_completion_tokens": 75.11,
+      "direct_tokens_per_sec": 63.53,
+      "gateway_tokens_per_sec": 52.59,
+      "pii_masked_avg": 0,
+      "direct_gpu": {
+        "gpu_util_avg": 85.9,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 2133.0
+      },
+      "gateway_gpu": {
+        "gpu_util_avg": 88.8,
+        "gpu_util_max": 96.0,
+        "gpu_mem_max_mib": 2133.0
+      }
+    },
+    "attack": {
+      "blocked": 6,
+      "total": 6,
+      "block_ms_avg": 5.99,
+      "gpu": {
+        "gpu_util_avg": 0.0,
+        "gpu_util_max": 0.0,
+        "gpu_mem_max_mib": 2133.0
+      }
+    }
+  }
+]
