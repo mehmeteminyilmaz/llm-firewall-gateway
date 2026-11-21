@@ -434,6 +434,27 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 | **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **~10.17 ms / ~16.63 ms** |
 | **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **33 / 33 Test Başarılı** |
 
+### Farklı Modellerde Performans Etkisi (Gecikme, Token, GPU)
+
+`python benchmark_models.py llama3.2:1b qwen2.5:1.5b gemma2:2b` komutu aynı istekleri hem **doğrudan Ollama'ya** hem de **Gateway üzerinden** göndererek ölçer. Ham sonuçlar: `benchmarks/model_results.json`.
+
+> **Test ortamı:** NVIDIA RTX 3050 Laptop GPU (4 GB VRAM), Ollama 0.40, CUDA. Her model için 3 PII'li + 3 temiz prompt × 3 tekrar, ayrıca 6 saldırı isteği.
+
+| Model | Gateway ek süresi (temiz / PII) | Prompt token farkı (temiz / PII) | Token/sn (doğrudan → Gateway) | Tepe VRAM | Saldırı engelleme (süre, GPU) |
+|---|---|---|---|---|---|
+| `llama3.2:1b` | 6.5 ms / 13.6 ms | +24.9 / +22.7 | 98.4 → 69.7 | 1529 MiB | 6/6, 10.5 ms, %0 GPU |
+| `qwen2.5:1.5b` | 7.4 ms / 10.3 ms | +11.3 / −8.4 | 100.8 → 70.4 | 2730 MiB | 6/6, 7.6 ms, %0 GPU |
+| `gemma2:2b` | 7.5 ms / 11.6 ms | +32.1 / +13.3 | 63.5 → 52.6 | 2133 MiB | 6/6, 6.0 ms, %0 GPU |
+
+**Yorum:**
+- **Gateway'in kendi ek süresi 6-14 ms'dir** ve modelin yanıt süresinin (yaklaşık 340-1400 ms) %1-2'si düzeyindedir.
+- **GPU:** Guardrail katmanları (regex, checksum, Presidio/spaCy) **CPU'da** çalışır. Doğrudan ve Gateway yoluyla ölçülen tepe VRAM aynıdır. Engellenen saldırılar modele hiç gitmediği için **GPU kullanımı %0'dır**; yani Gateway kötü niyetli isteklerde GPU süresi ve token harcamasını tamamen önler.
+- **Token maliyeti:** Canary token ve sistem yönergesi her isteğe yaklaşık **+11 ila +32 prompt token** ekler (tokenizer'a bağlı). `gpt-4o` fiyatıyla (1K prompt tokenı \$0.0025) +25 token, 10.000 istekte yaklaşık \$0.63 eder. PII maskeleme ise bazen prompt'u kısaltır (ör. `qwen2.5` PII setinde −8 token).
+- **Token/sn düşüşü (%10-30):** Gateway yolunda üretim hızı daha düşük ölçüldü. Olası nedeni, her istekte değişen canary token'ın Ollama'nın prompt önbelleğini geçersiz kılmasıdır. Bu açıklama ayrıca doğrulanmadı.
+
+> [!NOTE]
+> Toplam süre karşılaştırması adil değildir, çünkü modelin ürettiği token sayısı çalıştırmadan çalıştırmaya değişir. Bu yüzden ana ölçüt Gateway ek süresi ve token başına değerlerdir. `llama3.2:1b` PII setinde bir istekte model kontrolsüz uzun yanıt üretti (ortalama 757 token); bu, ortalamayı bozan tek bir aykırı değerdir. Ölçüm tek bir dizüstü GPU'da ve küçük örneklemle yapılmıştır; kesin bir performans iddiası değil, yönlendirici bir karşılaştırmadır. Büyük modeller (7B+) ve gerçek bulut API'leri denenmemiştir.
+
 ---
 
 ## 9. Dizin Yapısı
