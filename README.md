@@ -175,7 +175,7 @@ flowchart TB
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
 - **Streaming (SSE) ve Akış İçi Unmasking:** `stream=true` isteklerinde yanıt OpenAI `chat.completion.chunk` formatında akar. LLM bir yer tutucuyu parçalara bölse bile (`[TC_KI` + `MLIK_1]`) `StreamUnmasker` yarım kalan kuyruğu (en fazla 48 karakter) tamponlayıp tamamlanınca gerçek veriyle değiştirir; kasa akış başlar başlamaz imha edilir. Upstream erişilemezse akış başlamadan temiz `HTTP 502` döner.
-- **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
+- **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`, `llama-3.3-70b-versatile`, yerel `qwen2.5:1.5b`, `llama3.2:1b`, `gemma2:2b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
 
 ### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
 - **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
@@ -183,7 +183,7 @@ flowchart TB
 - **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
 
 ### E. Kurumsal SOC Güvenlik ve Performans Paneli (`dashboard.py`)
-- **Canlı Sağlık & Kontrol Yan Paneli:** Koyu kurumsal yan panel üzerinden hazır saldırı/PII senaryolarıyla (IBAN, API anahtarı, Türkçe/İngilizce jailbreak) canlı test, anlık HTTP 200/403/429/502 sonuç özet kartı, zaman aralığı/model filtreleri ve 10 saniyelik otomatik yenileme.
+- **Canlı Sağlık & Kontrol Yan Paneli:** Koyu kurumsal yan panel üzerinden hazır saldırı/PII senaryolarıyla (IBAN, API anahtarı, Türkçe/İngilizce jailbreak) canlı test, anlık HTTP 200/403/429/502 sonuç özet kartı, **iki aşamalı canlı akış doğrulaması** (*1. LLM'e Giden Maskeli Metin* → *2. LLM Yanıtı (Etiketler Geri Çözüldü)*), zaman aralığı/model filtreleri ve 10 saniyelik otomatik yenileme.
 - **4 Sekmeli İzleme Mimarisi:**
   - **Genel Bakış:** Semantik KPI kartları, istek durumu dağılımı, alan dolgulu gecikme/SLA grafiği, tehdit skoru histogramı, PII tür dağılımı ve model bazlı kullanım tablosu.
   - **Denetim Kaydı:** Durum filtresi, tehdit skoru görsel ilerleme çubuğu ve tek tıkla **CSV / JSON** dışa aktarma (prompt içeriği asla saklanmaz).
@@ -286,6 +286,21 @@ SOC Paneli: [http://localhost:8501](http://localhost:8501)
 pytest -q
 ```
 
+#### 4. Canlı LLM Bağlantısı (`live` Mod — Yerel Ollama GPU veya Bulut API)
+Gateway varsayılan olarak API anahtarı verilmediğinde güvenli `simulated` modda çalışır. Gerçek bir LLM ile **`live`** modda çalıştırmak için `.env` dosyasında aşağıdaki iki seçenekten birini tanımlamanız yeterlidir:
+
+```ini
+# Seçenek A — Yerel Ollama (Ücretsiz, GPU üzerinde qwen2.5:1.5b / llama3.2:1b / gemma2:2b)
+OPENAI_API_KEY=ollama
+UPSTREAM_LLM_URL=http://127.0.0.1:11434/v1/chat/completions
+DEFAULT_MODEL=qwen2.5:1.5b
+
+# Seçenek B — Bulut API (OpenAI veya Groq OpenAI-uyumlu uç nokta)
+# OPENAI_API_KEY=sk-... (veya gsk_...)
+# UPSTREAM_LLM_URL=https://api.openai.com/v1/chat/completions
+# DEFAULT_MODEL=gpt-4o-mini
+```
+
 ---
 
 ## 6. API Uç Noktaları ve Çevre Değişkenleri
@@ -351,6 +366,7 @@ pytest -q
     "completion_tokens": 12,
     "total_tokens": 28
   },
+  "masked_prompt": "Müşterimiz Ayşe Hanım'ın T.C. Kimlik No [TC_KIMLIK_1] ve iletişim adresi [EMAIL_ADDRESS_2]'dur. Kendisine abonelik yenileme bildirimi hazırla.",
   "response": "Sistem güvenli yanıtı: Talebiniz işlendi. Referans: Müşterimiz Ayşe Hanım'ın T.C. Kimlik No 98765432150 ve iletişim adresi ayse@kurum.com'dur. Kendisine abonelik yenileme bildirimi hazırla."
 }
 ```
