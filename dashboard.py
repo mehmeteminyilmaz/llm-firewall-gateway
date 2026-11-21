@@ -283,7 +283,7 @@ if df.empty:
     st.warning("Seçilen filtrelere uyan kayıt yok. Zaman aralığını veya model seçimini değiştirin.")
     st.stop()
 
-tab_overview, tab_audit, tab_bench = st.tabs(["Genel Bakış", "Denetim Kaydı", "Benchmark"])
+tab_overview, tab_audit, tab_models, tab_bench = st.tabs(["Genel Bakış", "Denetim Kaydı", "Model Performansı", "Benchmark"])
 
 # ---------------------------------------------------------------------------
 # Genel Bakış
@@ -451,6 +451,87 @@ with tab_audit:
             "estimated_cost_usd": st.column_config.NumberColumn("Maliyet ($)", format="$%.5f"),
         },
     )
+
+# ---------------------------------------------------------------------------
+# Model performansı: Gateway'in gecikme, token ve GPU üzerindeki etkisi
+# ---------------------------------------------------------------------------
+with tab_models:
+    if MODEL_BENCH_PATH.exists():
+        try:
+            mdata = json.loads(MODEL_BENCH_PATH.read_text(encoding="utf-8"))
+            names = [m["model"] for m in mdata]
+
+            section("Gateway'in modellere etkisi (gerçek ölçüm, Ollama + NVIDIA GPU)")
+            avg_over = sum(m["clean"]["gateway_overhead_ms"] for m in mdata) / len(mdata)
+            tok_add = sum(m["clean"]["gateway_prompt_tokens"] - m["clean"]["direct_prompt_tokens"] for m in mdata) / len(mdata)
+            blocked_all = sum(m["attack"]["blocked"] for m in mdata)
+            attacks_all = sum(m["attack"]["total"] for m in mdata)
+            max_gpu_attack = max(m["attack"]["gpu"]["gpu_util_max"] or 0 for m in mdata)
+            kc = st.columns(4, gap="small")
+            for col, html in zip(kc, [
+                kpi("Ort. Gateway ek süresi", f"{avg_over:.1f} ms", f"{len(mdata)} model, temiz istekler"),
+                kpi("İstek başına ek token", f"+{tok_add:.0f}", "Canary + sistem yönergesi"),
+                kpi("Saldırı engelleme", f"{blocked_all}/{attacks_all}", "Tüm modellerde", alert=False),
+                kpi("Engellenen istekte GPU", f"%{max_gpu_attack:.0f}", "Model hiç çağrılmadı"),
+            ]):
+                col.markdown(html, unsafe_allow_html=True)
+
+            left, right = st.columns(2, gap="large")
+            with left:
+                section("Gateway ek süresi (ms)")
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name="Temiz istek", x=names, y=[m["clean"]["gateway_overhead_ms"] for m in mdata], marker_color=SOFT))
+                fig.add_trace(go.Bar(name="PII'li istek", x=names, y=[m["pii"]["gateway_overhead_ms"] for m in mdata], marker_color=INK))
+                fig.update_layout(barmode="group", bargap=0.35)
+                show(fig, 280)
+            with right:
+                section("Prompt token: doğrudan vs Gateway")
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name="Doğrudan", x=names, y=[m["clean"]["direct_prompt_tokens"] for m in mdata], marker_color=SOFT))
+                fig.add_trace(go.Bar(name="Gateway", x=names, y=[m["clean"]["gateway_prompt_tokens"] for m in mdata], marker_color=INK))
+                fig.update_layout(barmode="group", bargap=0.35)
+                show(fig, 280)
+
+            left, right = st.columns(2, gap="large")
+            with left:
+                section("Üretim hızı (token/sn)")
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name="Doğrudan", x=names, y=[m["clean"]["direct_tokens_per_sec"] for m in mdata], marker_color=SOFT))
+                fig.add_trace(go.Bar(name="Gateway", x=names, y=[m["clean"]["gateway_tokens_per_sec"] for m in mdata], marker_color=INK))
+                fig.update_layout(barmode="group", bargap=0.35)
+                show(fig, 280)
+            with right:
+                section("GPU belleği (MiB) ve kullanım")
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name="Tepe VRAM (MiB)", x=names, y=[m["clean"]["gateway_gpu"]["gpu_mem_max_mib"] for m in mdata], marker_color=INK))
+                fig.add_trace(go.Scatter(name="Ort. GPU kullanımı (%)", x=names, y=[m["clean"]["gateway_gpu"]["gpu_util_avg"] for m in mdata],
+                                         mode="markers", marker=dict(color=ALERT, size=11), yaxis="y2"))
+                fig.update_layout(yaxis2=dict(overlaying="y", side="right", range=[0, 100], showgrid=False, zeroline=False))
+                show(fig, 280)
+
+            section("Ayrıntılı tablo")
+            rows = []
+            for m in mdata:
+                rows.append({
+                    "Model": m["model"],
+                    "Ek süre temiz (ms)": m["clean"]["gateway_overhead_ms"],
+                    "Ek süre PII (ms)": m["pii"]["gateway_overhead_ms"],
+                    "Prompt token (doğrudan)": m["clean"]["direct_prompt_tokens"],
+                    "Prompt token (gateway)": m["clean"]["gateway_prompt_tokens"],
+                    "Token/sn doğrudan": m["clean"]["direct_tokens_per_sec"],
+                    "Token/sn gateway": m["clean"]["gateway_tokens_per_sec"],
+                    "Tepe VRAM (MiB)": m["clean"]["gateway_gpu"]["gpu_mem_max_mib"],
+                    "Saldırı engelleme": f'{m["attack"]["blocked"]}/{m["attack"]["total"]}',
+                    "Engelleme süresi (ms)": m["attack"]["block_ms_avg"],
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.markdown('<div class="hint">Guardrail katmanları CPU\'da çalışır; engellenen saldırılar modele ulaşmadığı için GPU ve token harcamaz. '
+                        'Ölçüm tek bir dizüstü GPU\'da (RTX 3050, 4 GB) ve küçük örneklemle yapılmıştır; yönlendirici bir karşılaştırmadır. '
+                        'Yeniden üretmek için: <code>python benchmark_models.py llama3.2:1b qwen2.5:1.5b gemma2:2b</code></div>', unsafe_allow_html=True)
+        except Exception as exc:
+            st.caption(f"Model benchmark sonuçları okunamadı: {exc}")
+    else:
+        st.info("Model benchmark sonucu bulunamadı. `python benchmark_models.py <model...>` çalıştırın.")
 
 # ---------------------------------------------------------------------------
 # Akademik Benchmark Özeti (Faz 4b)
