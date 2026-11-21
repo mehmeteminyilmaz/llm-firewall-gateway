@@ -10,7 +10,8 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/Pytest-33%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
-[![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--zararlı-çıktı-kalkanı-faz-7)
+[![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı)
+[![Multi-Model Bench](https://img.shields.io/badge/Multi--Model%20Bench-3%20LLMs%20%2B%20GPU-2563EB.svg)](#farklı-modellerde-performans-etkisi-gecikme-token-gpu)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -123,7 +124,7 @@ flowchart TB
 
     %% SOC & Dashboard Katmanı
     subgraph SOCLayer ["5. SOC & Güvenlik Yönetim Paneli (Observability Dashboard)"]
-        Dashboard["Streamlit SOC Yönetim Paneli<br/>- Canlı Tehdit ve Saldırı Uyarıları<br/>- Maskelenen PII Tür Dağılım Grafikleri<br/>- P95 Gecikme, Token, USD Maliyet & Benchmark Özeti"]
+        Dashboard["Streamlit Kurumsal SOC Paneli (4 Sekme)<br/>- Genel Bakış: Canlı Sağlık, KPI, PII & Maliyet Grafikleri<br/>- Denetim Kaydı: Durum Filtresi & CSV/JSON Dışa Aktarma<br/>- Model Performansı (GPU/Token) & Benchmark Kırılımları"]
     end
 
     %% Akış Bağlantıları
@@ -180,6 +181,14 @@ flowchart TB
 - **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
 - **Sistem Talimatı İfşa Taraması (Instruction Leakage):** Modelin 'My initial instructions are...', 'Sistem talimatlarım şunlardır:' gibi gizli yönergeleri dışarı sızdırması engellenir.
 - **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
+
+### E. Kurumsal SOC Güvenlik ve Performans Paneli (`dashboard.py`)
+- **Canlı Sağlık & Kontrol Yan Paneli:** Koyu kurumsal yan panel üzerinden hazır saldırı/PII senaryolarıyla (IBAN, API anahtarı, Türkçe/İngilizce jailbreak) canlı test, anlık HTTP 200/403/429/502 sonuç özet kartı, zaman aralığı/model filtreleri ve 10 saniyelik otomatik yenileme.
+- **4 Sekmeli İzleme Mimarisi:**
+  - **Genel Bakış:** Semantik KPI kartları, istek durumu dağılımı, alan dolgulu gecikme/SLA grafiği, tehdit skoru histogramı, PII tür dağılımı ve model bazlı kullanım tablosu.
+  - **Denetim Kaydı:** Durum filtresi, tehdit skoru görsel ilerleme çubuğu ve tek tıkla **CSV / JSON** dışa aktarma (prompt içeriği asla saklanmaz).
+  - **Model Performansı:** Yerel Ollama + NVIDIA GPU üzerinde çok modelli gecikme, prompt token maliyeti, üretim hızı (token/sn) ve VRAM karşılaştırması.
+  - **Benchmark:** Inbound kategori bazlı doğruluk ve Outbound PII varlık doğrulama grafikleri.
 
 ---
 
@@ -257,11 +266,14 @@ Swagger API Arayüzü: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 #### 2. SOC Dashboard ve Benchmark Paketlerini Çalıştırma (İkinci Terminalde)
 ```bash
-# Örnek trafik üret (5 meşru + 5 saldırı isteği)
+# Örnek trafik üret (5 meşru + 5 saldırı + 1 yanıt engelleme olayı)
 python generate_traffic.py
 
 # Akademik benchmark paketini çalıştır ve BENCHMARK_REPORT.md üret
 python benchmark.py
+
+# (İsteğe bağlı — yerel Ollama kuruluysa) Çok modelli gecikme, token ve GPU ölçümü
+python benchmark_models.py llama3.2:1b qwen2.5:1.5b gemma2:2b
 
 # SOC Panelini başlat
 python -m streamlit run dashboard.py
@@ -294,6 +306,7 @@ pytest -q
 | `OPENAI_API_KEY` | *(boş)* | Hedef LLM API anahtarı. Boş bırakılırsa güvenli simülasyon (fallback) modunda çalışır. |
 | `UPSTREAM_LLM_URL` | `https://api.openai.com/v1/chat/completions` | Hedef LLM (OpenAI, Groq, vLLM, Ollama) API adresi. |
 | `DEFAULT_MODEL` | `gpt-3.5-turbo` | İsteklerde model belirtilmediğinde kullanılacak varsayılan model. |
+| `UPSTREAM_TIMEOUT_SEC` | `30` | Hedef LLM isteği için zaman aşımı süresi (saniye). |
 | `INJECTION_THRESHOLD` | `0.70` | Inbound Guard bloklama eşik değeri ($0.0 - 1.0$). |
 | `MAX_PROMPT_CHARS` | `20000` | Tek istekte kabul edilen maksimum karakter sınırı (`HTTP 413` koruması). |
 | `RATE_LIMIT_REQUESTS` | `30` | Pencere başına izin verilen maksimum istek sayısı (`HTTP 429` koruması). |
@@ -301,6 +314,8 @@ pytest -q
 | `GATEWAY_API_KEYS` | *(boş)* | Virgülle ayrılmış geçerli Gateway istemci anahtarları. Boşsa kimlik doğrulama kapalıdır. |
 | `SPACY_MODEL` | `en_core_web_sm` | Presidio'nun kullanacağı spaCy modeli (`python -m spacy download <model>` ile kurulmalı). |
 | `SQLITE_DB_PATH` | `llmops.db` | Denetim kayıtlarının (`audit_logs`) tutulduğu SQLite veritabanı yolu. |
+| `GATEWAY_URL` | `http://127.0.0.1:8000` | SOC Panelinin canlı test ve `/health` sorgusu için bağlandığı Gateway adresi. |
+| `DASHBOARD_GATEWAY_API_KEY` | *(boş)* | Kimlik doğrulama açıkken SOC Panelinin Gateway'e göndereceği Bearer anahtarı. |
 
 ---
 
@@ -431,13 +446,13 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 | **Inbound Guard Precision / Recall** | $> \%95.0$ | **%100.0 / %100.0** |
 | **Outbound Guard PII Maskeleme F1-Skoru** (19 Kurumsal Varlık) | $\%100.0$ | **%100.0** (`TP=19, FP=0, FN=0`) |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
-| **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **~0.04 ms / ~0.05 ms** |
-| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **~10.17 ms / ~16.63 ms** |
+| **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **0.035 ms / 0.048 ms** |
+| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **9.93 ms / 15.74 ms** |
 | **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **33 / 33 Test Başarılı** |
 
 ### Farklı Modellerde Performans Etkisi (Gecikme, Token, GPU)
 
-`python benchmark_models.py llama3.2:1b qwen2.5:1.5b gemma2:2b` komutu aynı istekleri hem **doğrudan Ollama'ya** hem de **Gateway üzerinden** göndererek ölçer. Ham sonuçlar: `benchmarks/model_results.json`.
+`python benchmark_models.py llama3.2:1b qwen2.5:1.5b gemma2:2b` komutu aynı istekleri hem **doğrudan Ollama'ya** hem de **Gateway üzerinden** göndererek ölçer. Ham sonuçlar: [`benchmarks/model_results.json`](benchmarks/model_results.json) (ayrıca SOC Panelindeki **Model Performansı** sekmesinde görselleştirilir).
 
 > **Test ortamı:** NVIDIA RTX 3050 Laptop GPU (4 GB VRAM), Ollama 0.40, CUDA. Her model için 3 PII'li + 3 temiz prompt × 3 tekrar, ayrıca 6 saldırı isteği.
 
@@ -450,7 +465,7 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 **Yorum:**
 - **Gateway'in kendi ek süresi 6-14 ms'dir** ve modelin yanıt süresinin (yaklaşık 340-1400 ms) %1-2'si düzeyindedir.
 - **GPU:** Guardrail katmanları (regex, checksum, Presidio/spaCy) **CPU'da** çalışır. Doğrudan ve Gateway yoluyla ölçülen tepe VRAM aynıdır. Engellenen saldırılar modele hiç gitmediği için **GPU kullanımı %0'dır**; yani Gateway kötü niyetli isteklerde GPU süresi ve token harcamasını tamamen önler.
-- **Token maliyeti:** Canary token ve sistem yönergesi her isteğe yaklaşık **+11 ila +32 prompt token** ekler (tokenizer'a bağlı). `gpt-4o` fiyatıyla (1K prompt tokenı \$0.0025) +25 token, 10.000 istekte yaklaşık \$0.63 eder. PII maskeleme ise bazen prompt'u kısaltır (ör. `qwen2.5` PII setinde −8 token).
+- **Token maliyeti:** Canary token ve sistem yönergesi her isteğe yaklaşık **+11 ila +32 prompt token** ekler (tokenizer'a bağlı). `gpt-4o` fiyatıyla (1K prompt tokenı 0.0025 USD) +25 token, 10.000 istekte yaklaşık 0.63 USD eder. PII maskeleme ise bazen prompt'u kısaltır (ör. `qwen2.5` PII setinde −8 token).
 - **Token/sn düşüşü (%10-30):** Gateway yolunda üretim hızı daha düşük ölçüldü. Olası nedeni, her istekte değişen canary token'ın Ollama'nın prompt önbelleğini geçersiz kılmasıdır. Bu açıklama ayrıca doğrulanmadı.
 
 > [!NOTE]
@@ -468,7 +483,7 @@ llm-firewall-gateway/
 ├── docs/
 │   └── SUNUM_REHBERI.md           # Jüri sunumu: demo, beklenen sorular, sınırlılıklar
 ├── .streamlit/
-│   └── config.toml                # Minimalist kurumsal panel tema yapılandırması
+│   └── config.toml                # Kurumsal SOC panel tema yapılandırması
 ├── app/
 │   ├── api/
 │   │   ├── __init__.py
@@ -495,7 +510,8 @@ llm-firewall-gateway/
 ├── benchmark.py                   # Faz 4b akademik değerlendirme ve raporlama motoru
 ├── benchmark_models.py            # Farklı LLM'lerde Gateway'in gecikme, token ve GPU etkisi ölçümü
 ├── BENCHMARK_REPORT.md            # Otomatik üretilen akademik değerlendirme raporu
-├── dashboard.py                   # Minimalist Streamlit SOC & Güvenlik Paneli
+├── PROJECT_SPEC.md                # Bitirme projesi şartnamesi ve mimari plan
+├── dashboard.py                   # 4 sekmeli kurumsal Streamlit SOC & Güvenlik Paneli
 ├── generate_traffic.py            # Canlı test trafiği üretici (sentetik istekler)
 ├── requirements.txt               # Python bağımlılıkları
 ├── .env.example                   # Örnek çevre değişkenleri şablonu
@@ -507,11 +523,12 @@ llm-firewall-gateway/
 ├── test_phase2.py                 # Faz 2 Heuristic & Prompt Injection testleri
 ├── test_phase3.py                 # Faz 3 Vault, LLM servisi ve Token testleri
 ├── test_phase5.py                 # Faz 5 OpenAI SDK uyumu, Maliyet, PII Tür ve Rate Limit testleri
-├── test_security_regressions.py   # Güvenlik regresyon testleri (Unicode/zero-width, 502 vault purge vb.)
 ├── test_phase6_pii.py             # Faz 6 TR IBAN (MOD-97), JWT ve Bearer jeton testleri
 ├── test_phase7_response_guard.py  # Faz 7 Canary token, sızıntı ve exploit çıktı testleri
+├── test_security_regressions.py   # Güvenlik regresyon testleri (Unicode/zero-width, 502 vault purge vb.)
 ├── Dockerfile                     # Kurumsal konteyner imajı tanımı
 ├── docker-compose.yml             # Gateway + SOC Dashboard çoklu servis orkestrasyonu
+├── LICENSE                        # MIT lisans metni
 └── README.md                      # Proje dokümantasyonu
 ```
 
