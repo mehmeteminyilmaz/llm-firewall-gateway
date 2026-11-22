@@ -223,9 +223,10 @@ async def _guarded_completion(
         )
     except UpstreamLLMError as exc:
         vault_store.retrieve_and_purge(vault_id)
-        overhead_ms = round((time.perf_counter() - request_start) * 1000, 2)
+        overhead_ms = round(max(0.01, (llm_start - request_start) * 1000), 2)
+        llm_fail_ms = round((time.perf_counter() - llm_start) * 1000, 2)
         await run_in_threadpool(
-            log_request, "UPSTREAM_ERROR", threat_score, pii_count, overhead_ms, 0.0, 0, 0.0, pii_types, model
+            log_request, "UPSTREAM_ERROR", threat_score, pii_count, overhead_ms, llm_fail_ms, 0, 0.0, pii_types, model
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
