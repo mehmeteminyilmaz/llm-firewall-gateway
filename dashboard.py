@@ -373,6 +373,7 @@ def render_chat_turn(item: Dict[str, Any]) -> None:
         ms = det.get("latency_ms", 0.0) if isinstance(det, dict) else 0.0
         layer = det.get("detection_layer", "L1_REGEX") if isinstance(det, dict) else "L1_REGEX"
         layer_labels = {
+            "L0_BLACKLIST": "KATMAN 0: KURUMSAL ÖZEL KARA LİSTE",
             "L1_REGEX": "KATMAN 1: DETERMINİSTİK REGEX İMZA",
             "L2_LEXICAL": "KATMAN 2: LEKSİKAL YOĞUNLUK",
             "L3_SEMANTIC_ML": "KATMAN 3: SEMANTİK VEKTÖR & ML",
@@ -587,8 +588,8 @@ if df.empty:
     st.warning("Seçilen filtrelere uyan kayıt yok. Zaman aralığını veya model seçimini değiştirin.")
     st.stop()
 
-tab_overview, tab_audit, tab_models, tab_bench = st.tabs(
-    ["Genel bakış", "Denetim kaydı", "Model performansı", "Benchmark"]
+tab_overview, tab_audit, tab_models, tab_bench, tab_policy = st.tabs(
+    ["Genel bakış", "Denetim kaydı", "Model performansı", "Benchmark", "Güvenlik politikası"]
 )
 
 # ---------------------------------------------------------------------------
@@ -928,14 +929,118 @@ with tab_bench:
                     show(fig, 360)
 
             st.markdown(
-                '<div class="hint">Değerlendirme kümesi küçüktür (50 injection + 19 PII varlığı) ve kurallarla birlikte geliştirilmiştir; '
-                '%100 sonuç bir regresyon tabanıdır, genelleme iddiası değildir.</div>',
+                '<div class="hint">Değerlendirme kümesi 65 injection örneği (25 L1/L2 kural + 10 L3 semantik sıfır-regex saldırı + 30 meşru/zorlu negatif) '
+                've 19 PII varlığından oluşur.</div>',
                 unsafe_allow_html=True,
             )
         except Exception as exc:
             st.caption(f"Benchmark sonuçları okunamadı: {exc}")
     else:
         st.info("Benchmark sonucu bulunamadı. `python benchmark.py` çalıştırın.")
+
+# ---------------------------------------------------------------------------
+# Canlı güvenlik politikası & çoklu sağlayıcı yönlendirici
+# ---------------------------------------------------------------------------
+with tab_policy:
+    _sec_counter["n"] = 0
+    headers_pol = {"Authorization": f"Bearer {GATEWAY_API_KEY}"} if GATEWAY_API_KEY else {}
+    pol_data = None
+    prov_data = None
+    try:
+        with httpx.Client(timeout=2.5) as client:
+            r_pol = client.get(GATEWAY_BASE + "/v1/policy", headers=headers_pol)
+            if r_pol.status_code == 200:
+                pol_data = r_pol.json()
+            r_prov = client.get(GATEWAY_BASE + "/v1/providers", headers=headers_pol)
+            if r_prov.status_code == 200:
+                prov_data = r_prov.json()
+    except Exception:
+        pass
+
+    if not pol_data:
+        st.info("Canlı güvenlik politikasını yönetmek için Gateway sunucusunun (port 8000) açık olması gerekir.")
+    else:
+        cur_thresh = float(pol_data.get("injection_threshold", 0.70))
+        cur_sem = bool(pol_data.get("enable_semantic_guard", True))
+        cur_resp = bool(pol_data.get("enable_response_guard", True))
+        cur_pii = pol_data.get("active_pii_entities", [])
+        avail_pii = pol_data.get("available_pii_entities", list(PII_LABELS.keys()))
+        cur_bl = pol_data.get("custom_blacklist", [])
+
+        strip([
+            ("Tehdit engelleme eşiği", f"{cur_thresh:.2f}", "HTTP 403 kesme sınırı", ""),
+            ("Katman 3 Semantik ML", "AKTİF" if cur_sem else "KAPALI", "TF-IDF + Kosinüs + Lojistik", "green" if cur_sem else "red"),
+            ("Aktif PII kategorisi", f"{len(cur_pii)} / {len(avail_pii)}", "zero-leakage maskeleme", ""),
+            ("Kurumsal kara liste", f"{len(cur_bl)} terim", "Katman 0 (L0) engeli", "red" if cur_bl else ""),
+        ])
+
+        section("Canlı güvenlik politikası yapılandırması (yeniden başlatma gerektirmez)")
+        with st.form("live_policy_form"):
+            c1, c2 = st.columns(2, gap="large")
+            with c1:
+                new_thresh = st.slider(
+                    "Inbound Guard tehdit engelleme eşiği (0.10 - 0.95)",
+                    min_value=0.10, max_value=0.95, value=cur_thresh, step=0.05,
+                )
+                new_sem = st.checkbox(
+                    "Katman 3: Semantik Vektör & ML Sınıflandırıcısı (kural-atlatan saldırıları yakalar)",
+                    value=cur_sem,
+                )
+                new_resp = st.checkbox(
+                    "Katman 4: Outbound Response Guard (Canary Token & Exploit çıktı kalkanı)",
+                    value=cur_resp,
+                )
+            with c2:
+                new_pii = st.multiselect(
+                    "Maskelenecek PII varlık kategorileri",
+                    options=avail_pii,
+                    default=[e for e in cur_pii if e in avail_pii],
+                )
+                new_bl_raw = st.text_input(
+                    "Kurumsal özel kara liste (virgülle ayırın — ör. Project-Titan, Gizli-Arge-2026)",
+                    value=", ".join(cur_bl),
+                )
+
+            b1, b2, _ = st.columns([1.4, 1.2, 3.0], gap="small")
+            save_clicked = b1.form_submit_button("Politikayı Canlı Uygula", type="primary", use_container_width=True)
+            reset_clicked = b2.form_submit_button("Fabrika Ayarlarına Sıfırla", use_container_width=True)
+
+            if save_clicked:
+                bl_list = [x.strip() for x in new_bl_raw.split(",") if x.strip()]
+                with httpx.Client(timeout=3.0) as client:
+                    client.put(
+                        GATEWAY_BASE + "/v1/policy",
+                        json={
+                            "injection_threshold": new_thresh,
+                            "enable_semantic_guard": new_sem,
+                            "enable_response_guard": new_resp,
+                            "active_pii_entities": new_pii,
+                            "custom_blacklist": bl_list,
+                        },
+                        headers=headers_pol,
+                    )
+                st.cache_data.clear()
+                st.rerun()
+
+            if reset_clicked:
+                with httpx.Client(timeout=3.0) as client:
+                    client.post(GATEWAY_BASE + "/v1/policy/reset", headers=headers_pol)
+                st.cache_data.clear()
+                st.rerun()
+
+        if prov_data and "providers" in prov_data:
+            section("Akıllı çoklu sağlayıcı yönlendiricisi (Multi-Provider Router & Failover)")
+            p_rows = [
+                {
+                    "Sağlayıcı": p["provider"],
+                    "Tür": p["type"],
+                    "Durum": "AKTİF (ANAHTAR TANIMLI)" if p["configured"] else f"YEDEKLEME → {prov_data.get('fallback_model', 'qwen2.5:1.5b')}",
+                    "Desteklenen Modeller": ", ".join(p["models"]),
+                    "Uç Nokta (Endpoint)": p["endpoint"],
+                }
+                for p in prov_data["providers"]
+            ]
+            st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True)
 
 if auto_refresh:
     time.sleep(10)

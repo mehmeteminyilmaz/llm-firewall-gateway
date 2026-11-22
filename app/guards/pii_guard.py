@@ -58,6 +58,7 @@ class PIIGuard:
     def __init__(self):
         # Model açıkça seçilir: Presidio varsayılanı en_core_web_lg (~400 MB) sessizce indirmeye çalışır.
         # Maskeleme ağırlıklı olarak regex/algoritmik olduğundan küçük model yeterlidir.
+        self.active_entities: List[str] = list(self.ENTITIES)
         model_name = os.getenv("SPACY_MODEL", "en_core_web_sm")
         nlp_engine = NlpEngineProvider(nlp_configuration={
             "nlp_engine_name": "spacy",
@@ -145,13 +146,13 @@ class PIIGuard:
         Metindeki hassas verileri maskeler ve geri dönüştürmek için eşleme sözlüğü üretir.
         start_index: Çok mesajlı isteklerde yer tutucu numaralarının çakışmaması için başlangıç ofseti.
         """
-        if not text:
-            return "", {}
+        if not text or not self.active_entities:
+            return text or "", {}
 
-        # Hassas varlıkları analiz et
+        # Hassas varlıkları analiz et (yalnızca aktif politika listesindeki kategoriler taranır)
         results = self.analyzer.analyze(
             text=text,
-            entities=self.ENTITIES,
+            entities=self.active_entities,
             language="en"  # Türkçe varlıklar özel regex'ler ve TR modellerle zenginleştirilecek
         )
 

@@ -25,6 +25,29 @@ pii_guard = PIIGuard()
 injection_guard = InjectionGuard(threshold=settings.INJECTION_THRESHOLD)
 response_guard = ResponseGuard()
 llm_service = LLMService()
+enable_response_guard: bool = True
+
+
+def reset_security_policy() -> Dict[str, object]:
+    """Canlı güvenlik politikasını varsayılan fabrika ayarlarına döndürür."""
+    global enable_response_guard
+    injection_guard.threshold = settings.INJECTION_THRESHOLD
+    injection_guard.enable_semantic = True
+    injection_guard.custom_blacklist = []
+    pii_guard.active_entities = list(PIIGuard.ENTITIES)
+    enable_response_guard = True
+    return get_security_policy()
+
+
+def get_security_policy() -> Dict[str, object]:
+    return {
+        "injection_threshold": injection_guard.threshold,
+        "enable_semantic_guard": injection_guard.enable_semantic,
+        "enable_response_guard": enable_response_guard,
+        "active_pii_entities": list(pii_guard.active_entities),
+        "available_pii_entities": list(PIIGuard.ENTITIES),
+        "custom_blacklist": list(injection_guard.custom_blacklist),
+    }
 
 # İçeriği güvenlik taramasından geçirilecek roller (system mesajı uygulama sahibine aittir, güvenilir kabul edilir)
 UNTRUSTED_ROLES = {"user", "tool", "function"}
@@ -74,6 +97,14 @@ class OpenAIChatCompletionRequest(BaseModel):
     messages: List[OpenAIMessage] = Field(..., min_length=1)
     temperature: Optional[float] = 0.3
     stream: Optional[bool] = False
+
+
+class SecurityPolicyUpdate(BaseModel):
+    injection_threshold: Optional[float] = Field(None, ge=0.10, le=0.99)
+    enable_semantic_guard: Optional[bool] = None
+    enable_response_guard: Optional[bool] = None
+    active_pii_entities: Optional[List[str]] = None
+    custom_blacklist: Optional[List[str]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +280,11 @@ async def _guarded_completion(
     final_output = pii_guard.unmask(llm_result["content"], cached_mapping)
 
     # 4. Outbound Response Guardrail (Canary, Leakage & Exploit Output Check)
-    resp_violation, resp_threat, resp_reasons = response_guard.scan(final_output, canary_token=ctx.canary_token)
+    resp_violation, resp_threat, resp_reasons = (
+        response_guard.scan(final_output, canary_token=ctx.canary_token)
+        if enable_response_guard
+        else (False, 0.0, [])
+    )
     outcome_status = "SUCCESS"
     if resp_violation:
         outcome_status = "RESPONSE_BLOCKED"
@@ -506,3 +541,33 @@ async def list_providers():
         "failover_enabled": llm_service.enable_failover,
         "providers": llm_service.get_providers_status(),
     }
+
+
+@router.get("/v1/policy")
+async def read_policy():
+    """Aktif canlı güvenlik politikasını (eşik değeri, aktif katmanlar, PII kategorileri, kara liste) döndürür."""
+    return get_security_policy()
+
+
+@router.put("/v1/policy")
+async def update_policy(req: SecurityPolicyUpdate, _client_id: str = Depends(resolve_client)):
+    """Sunucuyu yeniden başlatmadan canlı güvenlik politikasını günceller."""
+    global enable_response_guard
+    if req.injection_threshold is not None:
+        injection_guard.threshold = round(float(req.injection_threshold), 2)
+    if req.enable_semantic_guard is not None:
+        injection_guard.enable_semantic = bool(req.enable_semantic_guard)
+    if req.enable_response_guard is not None:
+        enable_response_guard = bool(req.enable_response_guard)
+    if req.active_pii_entities is not None:
+        valid = [e for e in req.active_pii_entities if e in PIIGuard.ENTITIES]
+        pii_guard.active_entities = valid
+    if req.custom_blacklist is not None:
+        injection_guard.custom_blacklist = [t.strip() for t in req.custom_blacklist if t and t.strip()]
+    return get_security_policy()
+
+
+@router.post("/v1/policy/reset")
+async def reset_policy_endpoint(_client_id: str = Depends(resolve_client)):
+    """Canlı güvenlik politikasını varsayılan değerlere sıfırlar."""
+    return reset_security_policy()

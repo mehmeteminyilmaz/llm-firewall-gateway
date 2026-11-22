@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Pytest-41%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Tests](https://img.shields.io/badge/Pytest-45%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
 [![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı)
 [![Multi-Model Bench](https://img.shields.io/badge/Multi--Model%20Bench-3%20LLMs%20%2B%20GPU-2563EB.svg)](#farklı-modellerde-performans-etkisi-gecikme-token-gpu)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
@@ -242,6 +242,11 @@ flowchart TB
   - Model adına göre dinamik sağlayıcı yönlendirmesi (`ollama-local`, `groq-cloud`, `openai-cloud`, `anthropic-cloud`)
   - Bulut sağlayıcı anahtarı eksikliğinde veya `HTTP 5xx` kesintilerinde yerel GPU modeline otomatik kesintisiz geçiş (`Graceful Failover`)
   - `/v1/providers` yönlendirme tablosu uç noktası ve Sohbet Denetim İzinde sağlayıcı/failover gösterimi
+- [x] **Faz 10: Canlı Güvenlik Politikası Yönetimi (Live Security Policy Engine & SOC Console)**
+  - Sunucuyu yeniden başlatmadan canlı tehdit eşiği (`0.10 - 0.95`), Katman 3 Semantik ML ve Katman 4 Response Guard açma/kapatma (`/v1/policy`)
+  - Kategori bazlı seçici PII maskeleme kontrolü (`TC_KIMLIK`, `TR_IBAN`, `API_KEY` vb. tek tek açılıp kapatılabilir)
+  - Kurumsal Özel Kara Liste (`L0_BLACKLIST` — gizli proje kod adlarını ve yasaklı terimleri anında `HTTP 403` ile engelleme)
+  - SOC Güvenlik Raporu ekranında 5. sekme olarak **"Güvenlik politikası"** yönetim konsolu
 
 ---
 
@@ -322,6 +327,8 @@ DEFAULT_MODEL=qwen2.5:1.5b
 | `POST` | `/v1/chat/secure` | Detaylı güvenlik, gecikme, PII tür dağılımı ve USD maliyet telemetrisi dönen birincil kurumsal proxy uç noktası. |
 | `POST` | `/v1/chat/completions` | Standart **OpenAI SDK / LangChain** uyumlu çok-turlu (multi-turn) drop-in proxy uç noktası (`X-Guardrail-*` başlıklarıyla). `stream=true` ile SSE akışı desteklenir. |
 | `GET` | `/v1/providers` | Aktif çoklu sağlayıcı yönlendirme tablosunu (`ollama-local`, `groq-cloud`, `openai-cloud`, `anthropic-cloud`) ve yedekleme (`failover`) durumunu döndürür. |
+| `GET/PUT` | `/v1/policy` | Canlı güvenlik politikasını (tehdit eşiği, semantik ML katmanı, aktif PII kategorileri, kurumsal kara liste) okur ve yeniden başlatma gerektirmeden günceller. |
+| `POST` | `/v1/policy/reset` | Canlı güvenlik politikasını fabrika varsayılanlarına sıfırlar. |
 | `GET` | `/health` | Sistem sağlık durumu, aktif LLM modu (`simulated` / `live`), kasa oturum sayısı ve rate-limit yapılandırması. |
 | `GET` | `/docs` | Etkileşimli OpenAPI / Swagger dokümantasyonu. |
 
@@ -475,7 +482,7 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
 | **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **1.40 ms / 2.42 ms** (L1 kısa-devre: ~0.04 ms) |
 | **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **11.37 ms / 20.14 ms** |
-| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **41 / 41 Test Başarılı** |
+| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **45 / 45 Test Başarılı** |
 
 ### Farklı Modellerde Performans Etkisi (Gecikme, Token, GPU)
 

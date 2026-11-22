@@ -23,6 +23,7 @@ class InjectionGuard:
     def __init__(self, threshold: float = 0.70, enable_semantic: bool = True):
         self.threshold = threshold
         self.enable_semantic = enable_semantic
+        self.custom_blacklist: List[str] = []
         self.semantic_guard: Optional[SemanticGuard] = (
             SemanticGuard(semantic_threshold=threshold) if enable_semantic else None
         )
@@ -120,12 +121,23 @@ class InjectionGuard:
         detection_layer = "CLEAN"
         semantic_details: Dict[str, Any] = {}
 
+        # Katman 0 (L0): Kurumsal Özel Kara Liste (Custom Blacklist - Gizli Proje / Yasaklı Terimler)
+        if self.custom_blacklist:
+            norm_lower = normalized.lower()
+            for term in self.custom_blacklist:
+                clean_term = term.strip()
+                if clean_term and clean_term.lower() in norm_lower:
+                    threat_score = max(threat_score, 0.95)
+                    reasons.append(f"Corporate custom blacklist violation: '{clean_term}'")
+                    detection_layer = "L0_BLACKLIST"
+
         # Katman 1 (L1): Deterministik Regex İmza Analizi
         for item in self.heuristic_patterns:
             if item["compiled"].search(normalized):
+                if item["weight"] > threat_score:
+                    detection_layer = "L1_REGEX"
                 threat_score = max(threat_score, item["weight"])
                 reasons.append(item["reason"])
-                detection_layer = "L1_REGEX"
 
         # Katman 2 (L2): Çoklu şüpheli anahtar kelime yoğunluğu kontrolü
         suspicious_keywords = [
@@ -140,8 +152,10 @@ class InjectionGuard:
             reasons.append(f"Suspicious keyword density: {', '.join(matched_kw)}")
 
         # Katman 3 (L3): Semantik Vektör Benzerliği & ML Sınıflandırıcısı
-        # Yalnızca L1/L2 eşiği aşmadıysa çalışır (Fast-path short-circuit optimizasyonu)
-        if self.enable_semantic and self.semantic_guard is not None and threat_score < self.threshold:
+        # Yalnızca L0/L1/L2 eşiği aşmadıysa çalışır (Fast-path short-circuit optimizasyonu)
+        if self.enable_semantic and threat_score < self.threshold:
+            if self.semantic_guard is None:
+                self.semantic_guard = SemanticGuard(semantic_threshold=self.threshold)
             sem_score, sem_reason, sem_meta = self.semantic_guard.score(normalized)
             semantic_details = sem_meta
             if sem_score > threat_score and sem_reason:

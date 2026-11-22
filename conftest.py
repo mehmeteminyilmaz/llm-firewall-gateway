@@ -22,11 +22,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pytest  # noqa: E402
 
 from app.core.vault import vault_store  # noqa: E402
+from app.api.proxy import reset_security_policy  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
     vault_store.reset_rate_limits()
+    reset_security_policy()
     yield
     vault_store.reset_rate_limits()
+    reset_security_policy()
 
