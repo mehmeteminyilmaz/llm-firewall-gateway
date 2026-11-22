@@ -48,6 +48,7 @@ class TokenUsage(BaseModel):
 class ChatResponse(BaseModel):
     status: str = "SUCCESS"
     threat_score: float = 0.0
+    detection_layer: str = "CLEAN"
     pii_detected_count: int = 0
     pii_types: Dict[str, int] = Field(default_factory=dict)
     gateway_overhead_ms: float
@@ -109,6 +110,7 @@ class _Ctx:
     request_start: float
     rate_remaining: int
     canary_token: Optional[str] = None
+    detection_layer: str = "CLEAN"
 
 
 async def _prepare(messages: List[Dict[str, str]], model: str, client_id: str, response: Response) -> _Ctx:
@@ -135,13 +137,16 @@ async def _prepare(messages: List[Dict[str, str]], model: str, client_id: str, r
                     "message": f"Total message content exceeds {settings.MAX_PROMPT_CHARS} characters."},
         )
 
-    # 1. Inbound Guard
-    threat_score, reasons = 0.0, []
+    # 1. Inbound Guard (Kademeli 3-Katman: L1 Regex -> L2 Lexical -> L3 Semantic ML)
+    threat_score, reasons, detection_layer = 0.0, [], "CLEAN"
     for m in messages:
         if m["role"] in UNTRUSTED_ROLES:
-            blocked, score, why = injection_guard.scan(m["content"])
-            threat_score = max(threat_score, score)
-            reasons.extend(r for r in why if r not in reasons)
+            scan_res = injection_guard.scan_detailed(m["content"])
+            score = scan_res["threat_score"]
+            if score > threat_score:
+                threat_score = score
+                detection_layer = scan_res["detection_layer"]
+            reasons.extend(r for r in scan_res["reasons"] if r not in reasons)
 
     if threat_score >= injection_guard.threshold:
         overhead_ms = round((time.perf_counter() - request_start) * 1000, 2)
@@ -154,6 +159,7 @@ async def _prepare(messages: List[Dict[str, str]], model: str, client_id: str, r
                 "error": "Security Policy Violation",
                 "message": "Prompt injection or policy violation detected.",
                 "threat_score": threat_score,
+                "detection_layer": detection_layer,
                 "reasons": reasons,
                 "latency_ms": overhead_ms,
             },
@@ -193,7 +199,8 @@ async def _prepare(messages: List[Dict[str, str]], model: str, client_id: str, r
     vault_id = vault_store.store(mapping)
     return _Ctx(model=model, masked_messages=masked_messages, mapping=mapping, vault_id=vault_id,
                 pii_count=pii_count, pii_types=pii_types, threat_score=threat_score,
-                request_start=request_start, rate_remaining=remaining, canary_token=canary_token)
+                request_start=request_start, rate_remaining=remaining, canary_token=canary_token,
+                detection_layer=detection_layer)
 
 
 async def _guarded_completion(
@@ -262,6 +269,7 @@ async def _guarded_completion(
     return ChatResponse(
         status=outcome_status,
         threat_score=threat_score,
+        detection_layer="L4_OUTBOUND_RESPONSE" if outcome_status == "RESPONSE_BLOCKED" else ctx.detection_layer,
         pii_detected_count=pii_count,
         pii_types=pii_types,
         gateway_overhead_ms=gateway_overhead_ms,
@@ -469,6 +477,7 @@ async def openai_compatible_completions(
         },
         "guardrail_metadata": {
             "threat_score": secure_res.threat_score,
+            "detection_layer": secure_res.detection_layer,
             "pii_detected_count": secure_res.pii_detected_count,
             "pii_types": secure_res.pii_types,
             "gateway_overhead_ms": secure_res.gateway_overhead_ms,

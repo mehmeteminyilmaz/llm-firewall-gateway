@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Pytest-33%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Tests](https://img.shields.io/badge/Pytest-37%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
 [![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı)
 [![Multi-Model Bench](https://img.shields.io/badge/Multi--Model%20Bench-3%20LLMs%20%2B%20GPU-2563EB.svg)](#farklı-modellerde-performans-etkisi-gecikme-token-gpu)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
@@ -69,15 +69,16 @@ flowchart TB
         RateLimiter{"Sliding-Window Rate Limiter<br/>(Kota Aşıldı mı? -> HTTP 429)"}
 
         %% Inbound Guard
-        subgraph InboundGuard ["Inbound Guard Katmanı (Giriş Denetimi)"]
+        subgraph InboundGuard ["Inbound Guard Katmanı (3-Katmanlı Kademeli Giriş Denetimi)"]
             direction TB
             NormEngine["Seviye 0: Unicode NFKC & Zero-Width Normalizasyonu<br/>(Obfuscation / Görünmez Karakter Temizliği)"]
-            H_Filter["Seviye 1: 10 Katmanlı Önbellekli Regex Filtresi<br/>(DAN Mode, Jailbreak, Delimiter Spoofing, Override vb.)"]
-            S_Filter["Seviye 2: Semantik Tehdit Skorlama Motoru<br/>(Şüpheli Anahtar Kelime Yoğunluğu & Payload Analizi)"]
+            H_Filter["Katman 1 (L1): Deterministik Regex İmza Motoru (~0.04 ms)<br/>(DAN Mode, Jailbreak, Delimiter Spoofing, Override vb.)"]
+            S_Filter["Katman 2 (L2): Leksikal Yoğunluk & Payload Analizi"]
+            ML_Filter["Katman 3 (L3): Semantik Vektör & ML Sınıflandırıcısı (~1.4 ms)<br/>(TF-IDF Alt-Kelime Vektör Uzayı + Kontrastif Kosinüs + Lojistik Regresyon)"]
             Decision{"Tehdit Skoru >= 0.70?"}
-            BlockResp["HTTP 403 Forbidden<br/>(İstek Anında Kesilir ve Güvenlik Olayı Loglanır)"]
+            BlockResp["HTTP 403 Forbidden<br/>(İstek Anında Kesilir, Yakalayan Katman & Olay Loglanır)"]
             
-            NormEngine --> H_Filter --> S_Filter --> Decision
+            NormEngine --> H_Filter --> S_Filter --> ML_Filter --> Decision
             Decision -- "Evet (Tehdit Algılandı)" --> BlockResp
         end
 
@@ -160,9 +161,10 @@ flowchart TB
 - **Opsiyonel Gateway Kimlik Doğrulaması & Boyut Sınırı:** `GATEWAY_API_KEYS` tanımlandığında geçersiz anahtarları `HTTP 401 Unauthorized` ile reddeder; `MAX_PROMPT_CHARS` (varsayılan 20.000 karakter) üzerindeki aşırı büyük istekleri `HTTP 413 Payload Too Large` ile durdurur.
 - **Sliding-Window Rate Limiter:** İstemci IP veya API anahtarı bazında dakikadaki istek sayısını denetler ve kota aşımında `HTTP 429 Too Many Requests` döner (`X-RateLimit-Remaining` ve `Retry-After` başlıklarıyla).
 - **Seviye 0 (Unicode NFKC & Zero-Width Normalizasyonu):** Saldırganların filtreleri atlatmak için kullandığı görünmez sıfır-genişlikli karakterleri (`\u200b` vb.) ve tam genişlikli Unicode harfleri (`Ｉｇｎｏｒｅ` -> `Ignore`) tarama öncesinde normalize eder.
-- **Seviye 1 (10 Katmanlı Önbellekli Heuristic & Regex):** `DAN mode`, `developer mode`, `ignore previous instructions`, `reveal system prompt`, `[SYSTEM]:`, `<|im_start|>system`, `hypothetical scenario ransomware/keylogger`, `kuralları unut`, `sistem talimatlarını göster` gibi saldırı kalıplarını derlenmiş (`re.compile`) regex motoruyla **~0.04 ms** içinde yakalar.
-- **Seviye 2 (Şüpheli Anahtar Kelime Yoğunluğu):** `base64`, `bypass`, `jailbreak`, `override`, `exploit`, `payload`, `unfiltered` kelimelerinin yoğunluğunu denetler.
-- **Tehdit Skorlama (Threat Score):** $0.0 - 1.0$ arasında bir risk skoru üretir. Eşik değer ($0.70$) aşıldığında istek hedef LLM'e hiç iletilmeden **HTTP 403 Forbidden** ile sonlandırılır.
+- **Katman 1 (`L1_REGEX` — 10 Katmanlı Önbellekli Heuristic & Regex):** `DAN mode`, `developer mode`, `ignore previous instructions`, `reveal system prompt`, `[SYSTEM]:`, `<|im_start|>system`, `hypothetical scenario ransomware/keylogger`, `kuralları unut`, `sistem talimatlarını göster` gibi bilinen saldırı imzalarını derlenmiş (`re.compile`) regex motoruyla **~0.04 ms** içinde yakalar ve L3 katmanına gitmeden kısa devre (`fast-path short-circuit`) yapar.
+- **Katman 2 (`L2_LEXICAL` — Şüpheli Anahtar Kelime Yoğunluğu):** `base64`, `bypass`, `jailbreak`, `override`, `exploit`, `payload`, `unfiltered` kelimelerinin birlikte kullanım yoğunluğunu denetler.
+- **Katman 3 (`L3_SEMANTIC_ML` — Semantik Vektör Benzerliği & Makine Öğrenmesi Sınıflandırıcısı):** Kural tabanlı (L1/L2) filtreleri atlatmak için kelimeleri değiştirilmiş (*paraphrased / zero-regex*) Türkçe ve İngilizce saldırıları yakalar. İki dilli **Kelime `(1,3)` + Alt-Kelime Karakter `char_wb (3,5)` TF-IDF Vektör Uzayı** üzerinde **Kontrastif Kosinüs Vektör Benzerliği** (Saldırı Prototip Bankası vs Zorlu-Negatif Meşru Vektör Bankası) ile **L2 Lojistik Regresyon (`LogisticRegression`)** olasılığını birleştirir.
+- **Tehdit Skorlama (Threat Score):** $0.0 - 1.0$ arasında bir risk skoru ve yakalayan katman bilgisi (`detection_layer`) üretir. Eşik değer ($0.70$) aşıldığında istek hedef LLM'e hiç iletilmeden **HTTP 403 Forbidden** ile sonlandırılır.
 
 ### B. Outbound Guard (Hassas Veri Maskeleme & Zero-Leakage Vault)
 - **Algoritmik Checksum Doğrulamalı PII Taraması:**
@@ -230,6 +232,11 @@ flowchart TB
   - Verbatim sistem talimatı sızıntısı kalıpları (Instruction Leakage Echo)
   - Yüksek riskli reverse-shell / exploit payload çıktı sansürleme ve akış içi kesme (`content_filter`)
   - Denetim tablosunda ve SOC Paneli Pasta/Kırılım grafiklerinde `RESPONSE_BLOCKED` desteği
+- [x] **Faz 8: Hibrit Semantik Tehdit Katmanı (`L3_SEMANTIC_ML` — Vektör Benzerliği & ML Sınıflandırıcı)**
+  - Türkçe sondan eklemeli morfolojiye dayanıklı `char_wb (3,5)` + `word (1,3)` TF-IDF hibrit vektör uzayı
+  - Kontrastif Kosinüs Benzerliği (Adversarial Prototypes vs Hard-Negative Benign Anchors) + L2 Lojistik Regresyon modeli
+  - Kademeli kısa-devre (`fast-path short-circuit`): Bilinen imzalar L1'de (~0.04 ms) elenir, yalnızca gri alandaki istemler L3 Semantik ML katmanına (~1.4 ms) düşer
+  - 65 örnekli genişletilmiş benchmark üzerinde **Sadece Kural (%71.4 Recall)** vs **Hibrit Semantik ML (%100.0 Recall)** ablation analizi
 
 ---
 
@@ -456,13 +463,13 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 
 | Değerlendirme Metriği | Akademik / SLA Hedefi | Ölçülen Sonuç (`benchmark.py`) |
 |---|---|---|
-| **Inbound Guard F1-Skoru** (50 Örnek: 25 Saldırı / 25 Meşru) | $> \%95.0$ | **%100.0** (`TP=25, TN=25, FP=0, FN=0`) |
-| **Inbound Guard Precision / Recall** | $> \%95.0$ | **%100.0 / %100.0** |
+| **Inbound Guard F1-Skoru** (65 Örnek: 35 Saldırı / 30 Meşru) | $> \%95.0$ | **%100.0** (`TP=35, TN=30, FP=0, FN=0`) |
+| **Ablation: Sadece Kural (L1/L2) vs Hibrit Semantik ML (L1+L2+L3)** | Duyarlılık Artışı | **%71.43 Recall → %100.0 Recall** (+10 semantik saldırı yakalandı) |
 | **Outbound Guard PII Maskeleme F1-Skoru** (19 Kurumsal Varlık) | $\%100.0$ | **%100.0** (`TP=19, FP=0, FN=0`) |
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
-| **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **0.035 ms / 0.048 ms** |
-| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **9.93 ms / 15.74 ms** |
-| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **33 / 33 Test Başarılı** |
+| **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **1.40 ms / 2.42 ms** (L1 kısa-devre: ~0.04 ms) |
+| **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **11.37 ms / 20.14 ms** |
+| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **37 / 37 Test Başarılı** |
 
 ### Farklı Modellerde Performans Etkisi (Gecikme, Token, GPU)
 

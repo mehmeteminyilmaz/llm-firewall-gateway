@@ -1,20 +1,33 @@
 import re
 import unicodedata
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
+
+from app.guards.semantic_guard import SemanticGuard
 
 
 class InjectionGuard:
     """
-    Inbound Guard: Prompt Injection & Jailbreak Tespit Motoru.
-    Kullanıcının sistem yönergelerini aşmaya (Jailbreak) veya modeli manipüle etmeye
-    (Prompt Injection) yönelik girişimlerini kural bazlı (heuristic) ve semantik
-    tehdit skorlaması ile tespit eder.
+    Inbound Guard: 3-Katmanlı Hibrit Prompt Injection & Jailbreak Tespit Motoru.
+
+    Kademeli Savunma Mimarisi (Cascaded Defense-in-Depth):
+    - Katman 1 (L1 - Deterministik Regex & İmza Motoru, ~0.04 ms):
+      Bilinen kesin saldırı imzalarını ve Unicode gizleme (obfuscation) girişimlerini anında yakalar.
+    - Katman 2 (L2 - Leksikal Yoğunluk Analizi, ~0.02 ms):
+      Çoklu şüpheli anahtar kelime yoğunluğunu tespit eder.
+    - Katman 3 (L3 - Semantik Vektör Benzerliği & ML Sınıflandırıcısı, ~0.45 ms):
+      L1/L2 kural katmanını atlatmak için kelimeleri değiştirilmiş (paraphrased) veya dolaylı
+      kurgulanmış saldırıları TF-IDF Alt-Kelime Vektör Uzayı, Kontrastif Kosinüs Benzerliği
+      ve L2 Lojistik Regresyon modeli ile anlamsal olarak yakalar.
     """
 
-    def __init__(self, threshold: float = 0.70):
+    def __init__(self, threshold: float = 0.70, enable_semantic: bool = True):
         self.threshold = threshold
+        self.enable_semantic = enable_semantic
+        self.semantic_guard: Optional[SemanticGuard] = (
+            SemanticGuard(semantic_threshold=threshold) if enable_semantic else None
+        )
 
-        # 1. Bilinen kritik jailbreak ve injection kalıpları (Regex tabanlı katman)
+        # 1. Katman 1 (L1): Bilinen kritik jailbreak ve injection kalıpları (Regex tabanlı katman)
         self.heuristic_patterns: List[Dict[str, Any]] = [
             {
                 "pattern": r"(?i)(ignore|disregard|forget|override|bypass)\s+(all\s+|every\s+|any\s+|the\s+)?(of\s+)?(your\s+|the\s+)?(previous|prior|above|earlier|initial|system|safety)\s+(instructions?|prompts?|rules?|guidelines?|constraints?)",
@@ -87,35 +100,70 @@ class InjectionGuard:
         text = cls._INVISIBLE_CHARS.sub("", text)
         return re.sub(r"\s+", " ", text).strip()
 
+    def scan_detailed(self, text: str) -> Dict[str, Any]:
+        """
+        Gelen metni 3 katmanlı kademeli mimariyle analiz eder ve hangi katmanın
+        tetiklendiğini içeren detaylı denetim sözlüğü döndürür.
+        """
+        if not text:
+            return {
+                "is_blocked": False,
+                "threat_score": 0.0,
+                "reasons": [],
+                "detection_layer": "CLEAN",
+                "semantic_details": {},
+            }
+
+        normalized = self.normalize(text)
+        reasons: List[str] = []
+        threat_score = 0.0
+        detection_layer = "CLEAN"
+        semantic_details: Dict[str, Any] = {}
+
+        # Katman 1 (L1): Deterministik Regex İmza Analizi
+        for item in self.heuristic_patterns:
+            if item["compiled"].search(normalized):
+                threat_score = max(threat_score, item["weight"])
+                reasons.append(item["reason"])
+                detection_layer = "L1_REGEX"
+
+        # Katman 2 (L2): Çoklu şüpheli anahtar kelime yoğunluğu kontrolü
+        suspicious_keywords = [
+            "base64", "bypass", "jailbreak", "override", "payload",
+            "exploit", "unfiltered", "raw output", "kuralları çiğne"
+        ]
+        matched_kw = [kw for kw in suspicious_keywords if kw in normalized.lower()]
+        if len(matched_kw) >= 2:
+            if 0.75 > threat_score:
+                detection_layer = "L2_LEXICAL"
+            threat_score = max(threat_score, 0.75)
+            reasons.append(f"Suspicious keyword density: {', '.join(matched_kw)}")
+
+        # Katman 3 (L3): Semantik Vektör Benzerliği & ML Sınıflandırıcısı
+        # Yalnızca L1/L2 eşiği aşmadıysa çalışır (Fast-path short-circuit optimizasyonu)
+        if self.enable_semantic and self.semantic_guard is not None and threat_score < self.threshold:
+            sem_score, sem_reason, sem_meta = self.semantic_guard.score(normalized)
+            semantic_details = sem_meta
+            if sem_score > threat_score and sem_reason:
+                threat_score = sem_score
+                reasons.append(sem_reason)
+                detection_layer = "L3_SEMANTIC_ML"
+
+        threat_score = round(threat_score, 2)
+        is_blocked = threat_score >= self.threshold
+
+        return {
+            "is_blocked": is_blocked,
+            "threat_score": threat_score,
+            "reasons": reasons,
+            "detection_layer": detection_layer if is_blocked or threat_score > 0 else "CLEAN",
+            "semantic_details": semantic_details,
+        }
+
     def scan(self, text: str) -> Tuple[bool, float, List[str]]:
         """
         Gelen metni analiz eder.
         Dönüş: (is_blocked, threat_score, reasons)
         """
-        if not text:
-            return False, 0.0, []
-
-        text = self.normalize(text)
-        reasons = []
-        threat_score = 0.0
-
-        # Heuristic analiz
-        for item in self.heuristic_patterns:
-            if item["compiled"].search(text):
-                threat_score = max(threat_score, item["weight"])
-                reasons.append(item["reason"])
-
-        # Çoklu şüpheli anahtar kelime yoğunluğu kontrolü
-        suspicious_keywords = [
-            "base64", "bypass", "jailbreak", "override", "payload",
-            "exploit", "unfiltered", "raw output", "kuralları çiğne"
-        ]
-        matched_kw = [kw for kw in suspicious_keywords if kw in text.lower()]
-        if len(matched_kw) >= 2:
-            threat_score = max(threat_score, 0.75)
-            reasons.append(f"Suspicious keyword density: {', '.join(matched_kw)}")
-
-        threat_score = round(threat_score, 2)
-        is_blocked = threat_score >= self.threshold
-
-        return is_blocked, threat_score, reasons
+        res = self.scan_detailed(text)
+        return res["is_blocked"], res["threat_score"], res["reasons"]
