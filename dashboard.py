@@ -243,9 +243,11 @@ PRESETS = {
 }
 
 MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-20b",
     "qwen2.5:1.5b", "llama3.2:1b", "gemma2:2b",
-    "llama-3.3-70b-versatile",
-    "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "claude-3-5-sonnet", "llama-3-70b",
+    "gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet",
 ]
 PERIODS = {"Tümü": None, "Son 1 saat": 1, "Son 24 saat": 24, "Son 7 gün": 24 * 7}
 

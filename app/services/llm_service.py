@@ -13,6 +13,9 @@ MODEL_PRICING_PER_1K: Dict[str, Dict[str, float]] = {
     "claude-3-5-sonnet": {"prompt": 0.0030, "completion": 0.0150},
     "llama-3-70b": {"prompt": 0.0006, "completion": 0.0008},
     "llama-3.3-70b-versatile": {"prompt": 0.00059, "completion": 0.00079},
+    "openai/gpt-oss-120b": {"prompt": 0.00015, "completion": 0.00060},
+    "openai/gpt-oss-20b": {"prompt": 0.00007, "completion": 0.00030},
+    "qwen/qwen3.8-27b": {"prompt": 0.00010, "completion": 0.00040},
     "qwen2.5:1.5b": {"prompt": 0.0001, "completion": 0.0002},
     "llama3.2:1b": {"prompt": 0.0001, "completion": 0.0002},
     "gemma2:2b": {"prompt": 0.0001, "completion": 0.0002},
@@ -91,10 +94,10 @@ class LLMService:
     def classify_provider(model: str) -> str:
         """Model adına göre hedef sağlayıcı ailesini belirler."""
         m = (model or "").strip().lower()
-        if ":" in m or m.startswith(("qwen", "llama3.2", "gemma", "mistral:", "phi", "ollama/")):
-            return "ollama-local"
-        if m.startswith(("llama-3", "llama3-", "mixtral", "groq/")):
+        if m.startswith(("openai/gpt-oss", "qwen/qwen", "allam-", "llama-3", "llama3-", "mixtral", "groq/")):
             return "groq-cloud"
+        if ":" in m or m.startswith(("qwen2", "llama3.2", "gemma", "mistral:", "phi", "ollama/")):
+            return "ollama-local"
         if m.startswith(("claude", "anthropic/")):
             return "anthropic-cloud"
         return "openai-cloud"
@@ -124,7 +127,7 @@ class LLMService:
                 "type": "Cloud LPU (High-Speed)",
                 "endpoint": self.groq_url,
                 "configured": bool(self.groq_key),
-                "models": ["llama-3.3-70b-versatile", "llama-3-70b"],
+                "models": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"],
             },
             {
                 "provider": "openai-cloud",
@@ -168,7 +171,7 @@ class LLMService:
             fb_model = self.fallback_model if ":" in self.fallback_model else "qwen2.5:1.5b"
             fallback_candidates.append(("ollama-local", self.ollama_key, self.ollama_url, fb_model))
         if self.groq_key:
-            fallback_candidates.append(("groq-cloud", self.groq_key, self.groq_url, "llama-3.3-70b-versatile"))
+            fallback_candidates.append(("groq-cloud", self.groq_key, self.groq_url, "openai/gpt-oss-120b"))
         if self.openai_key:
             fallback_candidates.append(("openai-cloud", self.openai_key, self.openai_url, "gpt-4o-mini"))
 
