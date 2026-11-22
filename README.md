@@ -178,8 +178,8 @@ flowchart TB
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
 - **Streaming (SSE) ve Akış İçi Unmasking:** `stream=true` isteklerinde yanıt OpenAI `chat.completion.chunk` formatında akar. LLM bir yer tutucuyu parçalara bölse bile (`[TC_KI` + `MLIK_1]`) `StreamUnmasker` yarım kalan kuyruğu (en fazla 48 karakter) tamponlayıp tamamlanınca gerçek veriyle değiştirir; kasa akış başlar başlamaz imha edilir. Upstream erişilemezse akış başlamadan temiz `HTTP 502` döner.
-- **Akıllı Çoklu Sağlayıcı Yönlendiricisi (Smart Multi-Provider Router & Graceful Failover):** İstenen model adına göre hedef sağlayıcıyı otomatik seçer (`qwen2.5:1.5b` / `llama3.2:1b` / `gemma2:2b` → **Yerel GPU Ollama**; `llama-3.3-70b-versatile` → **Groq Cloud API**; `gpt-4o` / `gpt-4o-mini` → **OpenAI Cloud API**; `claude-3-5-sonnet` → **Anthropic Cloud API**). Bulut API anahtarı tanımlı değilse veya birincil sağlayıcı hata/zaman aşımı döndürürse (`HTTP 5xx`), isteği kesintisiz olarak aktif yedek sağlayıcıya (ör. yerel GPU üzerindeki `qwen2.5:1.5b` modeline) yönlendirir (`failover_triggered: true`).
-- **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`, `llama-3.3-70b-versatile`, yerel `qwen2.5:1.5b`, `llama3.2:1b`, `gemma2:2b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
+- **Akıllı Çoklu Sağlayıcı Yönlendiricisi (Smart Multi-Provider Router & Graceful Failover):** İstenen model adına göre hedef sağlayıcıyı otomatik seçer (`qwen2.5:1.5b` / `llama3.2:1b` / `gemma2:2b` → **Yerel GPU Ollama**; `openai/gpt-oss-120b` / `qwen/qwen3.8-27b` / `openai/gpt-oss-20b` → **Groq Cloud LPU API**; `gpt-4o` / `gpt-4o-mini` → **OpenAI Cloud API**; `claude-3-5-sonnet` → **Anthropic Cloud API**). Bulut API anahtarı tanımlı değilse veya birincil sağlayıcı hata/zaman aşımı döndürürse (`HTTP 5xx`), isteği kesintisiz olarak aktif yedek sağlayıcıya (ör. yerel GPU üzerindeki `qwen2.5:1.5b` modeline) yönlendirir (`failover_triggered: true`).
+- **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `openai/gpt-oss-20b`, `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, yerel `qwen2.5:1.5b`, `llama3.2:1b`, `gemma2:2b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
 
 ### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
 - **Dinamik Canary Token (Honeypot):** Her oturum için rastgele oluşturulan bir güvenlik belirteci (`CANARY_SEC_<id>`) sistem talimatlarına enjekte edilir. Model sistem promptunu ifşa etmeye zorlandığında çıktıda bu belirteç saptanır saptanmaz yanıt bloke edilir (`threat_score = 1.0`).
@@ -306,13 +306,16 @@ pytest -q
 Gateway varsayılan olarak API anahtarı verilmediğinde güvenli `simulated` modda çalışır. Gerçek bir LLM ile **`live`** modda çalıştırmak için `.env` dosyasında aşağıdaki iki seçenekten birini tanımlamanız yeterlidir:
 
 ```ini
-# Seçenek A — Yerel Ollama (Ücretsiz, GPU üzerinde qwen2.5:1.5b / llama3.2:1b / gemma2:2b)
+# Seçenek A — Hibrit Çoklu Sağlayıcı Modu (Groq Bulut 120B + Yerel Ollama RTX 3050 GPU Yedekli)
 OPENAI_API_KEY=ollama
 UPSTREAM_LLM_URL=http://127.0.0.1:11434/v1/chat/completions
-DEFAULT_MODEL=qwen2.5:1.5b
+DEFAULT_MODEL=openai/gpt-oss-120b
+FALLBACK_MODEL=qwen2.5:1.5b
+ENABLE_PROVIDER_FALLBACK=true
+GROQ_API_KEY=gsk_...
 
-# Seçenek B — Bulut API (OpenAI veya Groq OpenAI-uyumlu uç nokta)
-# OPENAI_API_KEY=sk-... (veya gsk_...)
+# Seçenek B — Doğrudan OpenAI Bulut API
+# OPENAI_API_KEY=sk-...
 # UPSTREAM_LLM_URL=https://api.openai.com/v1/chat/completions
 # DEFAULT_MODEL=gpt-4o-mini
 ```
@@ -342,7 +345,7 @@ DEFAULT_MODEL=qwen2.5:1.5b
 | `DEFAULT_MODEL` | `gpt-3.5-turbo` | İsteklerde model belirtilmediğinde kullanılacak varsayılan model. |
 | `FALLBACK_MODEL` | `qwen2.5:1.5b` | Bulut sağlayıcı anahtarı eksikliğinde veya `HTTP 5xx` kesintisinde devreye girecek yerel GPU yedek modeli. |
 | `ENABLE_PROVIDER_FALLBACK` | `true` | Sağlayıcılar arası otomatik kesintisiz yedekleme (`Graceful Failover`) özelliği. |
-| `GROQ_API_KEY` | *(boş)* | `llama-3.3-70b-versatile` ve `llama-3-70b` modelleri için Groq Cloud API anahtarı (`gsk_...`). |
+| `GROQ_API_KEY` | *(boş)* | `openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `openai/gpt-oss-20b` ve `llama-3.3-70b-versatile` modelleri için Groq Cloud API anahtarı (`gsk_...`). |
 | `ANTHROPIC_API_KEY` | *(boş)* | `claude-3-5-sonnet` modeli için Anthropic API anahtarı. |
 | `UPSTREAM_TIMEOUT_SEC` | `30` | Hedef LLM isteği için zaman aşımı süresi (saniye). |
 | `INJECTION_THRESHOLD` | `0.70` | Inbound Guard bloklama eşik değeri ($0.0 - 1.0$). |
