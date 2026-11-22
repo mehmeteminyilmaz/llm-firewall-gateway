@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-22 18:06:37",
+  "timestamp": "2026-11-22 19:13:12",
   "metadata": {
     "name": "Enterprise LLM Guardrail Benchmark Suite",
     "version": "1.1.0",
@@ -24,10 +24,10 @@
     "precision": 100.0,
     "recall": 100.0,
     "f1_score": 100.0,
-    "avg_latency_ms": 1.3994,
-    "p50_latency_ms": 2.1564,
-    "p95_latency_ms": 2.4209,
-    "p99_latency_ms": 2.5548,
+    "avg_latency_ms": 0.2058,
+    "p50_latency_ms": 0.0514,
+    "p95_latency_ms": 0.8079,
+    "p99_latency_ms": 1.0718,
     "layer_breakdown": {
       "L1_REGEX": 24,
       "L2_LEXICAL": 1,
@@ -94,10 +94,10 @@
     "precision": 100.0,
     "recall": 71.43,
     "f1_score": 83.33,
-    "avg_latency_ms": 0.0407,
-    "p50_latency_ms": 0.0374,
-    "p95_latency_ms": 0.0572,
-    "p99_latency_ms": 0.0745,
+    "avg_latency_ms": 0.0375,
+    "p50_latency_ms": 0.0358,
+    "p95_latency_ms": 0.051,
+    "p99_latency_ms": 0.0561,
     "layer_breakdown": {
       "L1_REGEX": 24,
       "L2_LEXICAL": 1,
@@ -223,19 +223,19 @@
     "f1_score": 100.0,
     "unmask_accuracy": 100.0,
     "zero_leakage_rate": 100.0,
-    "avg_latency_ms": 11.37,
-    "p50_latency_ms": 7.62,
-    "p95_latency_ms": 20.14,
+    "avg_latency_ms": 10.06,
+    "p50_latency_ms": 7.7,
+    "p95_latency_ms": 16.19,
     "entity_breakdown": {
-      "EMAIL_ADDRESS": {
-        "expected": 7,
-        "detected": 7,
-        "matched": 7
-      },
       "TC_KIMLIK": {
         "expected": 5,
         "detected": 5,
         "matched": 5
+      },
+      "EMAIL_ADDRESS": {
+        "expected": 7,
+        "detected": 7,
+        "matched": 7
       },
       "API_KEY": {
         "expected": 3,
