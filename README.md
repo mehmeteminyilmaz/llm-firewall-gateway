@@ -182,14 +182,11 @@ flowchart TB
 - **Sistem Talimatı İfşa Taraması (Instruction Leakage):** Modelin 'My initial instructions are...', 'Sistem talimatlarım şunlardır:' gibi gizli yönergeleri dışarı sızdırması engellenir.
 - **Zararlı Çıktı & Exploit Filtresi:** Model jailbreak olsa dahi tehlikeli reverse shell (`/bin/sh -i`, `nc -e`), powershell payload veya yıkıcı komut çıktıları sansürlenerek `RESPONSE_BLOCKED` statüsü ile denetime kaydedilir.
 
-### E. Kurumsal SOC Güvenlik ve Performans Paneli (`dashboard.py`)
+### E. Kurumsal SOC Güvenlik Raporu ve Çalışan Sohbet Konsolu (`dashboard.py`)
+- **İki Ayrı Rol / Görünüm Modu (Tam Rol Ayrımı):**
+  1. **SOC Güvenlik Raporu (Güvenlik Ekibi Ekranı):** Sol menüde yalnızca rapor filtreleri (zaman aralığı, model) ve otomatik yenileme bulunur; soru sorma kutusu yer almaz. 4 sekmeden (*Genel Bakış*, *Denetim Kaydı + CSV/JSON Dışa Aktarma*, *Model Performansı*, *Benchmark*) oluşur.
+  2. **Kurumsal Asistan (Çalışan Sohbet Ekranı):** Şirket çalışanının kullandığı yapay zekâ sohbet arayüzüdür. Üstte 5 adet tek tıklamalık hazır senaryo tetikleyicisi ve serbest mesaj alanı yer alır. Her mesajda **Çalışan İstemi → Gateway Denetim İzi (`[TC_KIMLIK_1]` maskeli metin veya `HTTP 403` engelleme kararı) → Çözülmüş Asistan Yanıtı** üç aşamalı olarak canlı gösterilir.
 - **Editoryal Operasyon Raporu Tasarımı:** Tipik yapay zekâ şablonlarından arındırılmış sıcak kâğıt zemin (`#F6F4EE`), keskin mürekkep çerçeveler (`#14181F`) ve üçlü tipografi hiyerarşisi (*Newsreader* serif başlık ve metrikler, *IBM Plex Mono* numaralı bölümler ve teknik damgalar, *IBM Plex Sans* gövde).
-- **Canlı Test & Operasyon Yan Konsolu:** Hazır saldırı/PII senaryolarıyla (IBAN, API anahtarı, Türkçe/İngilizce jailbreak) canlı test, anlık HTTP 200/403/429/502 sonuç kartı, **iki aşamalı canlı akış doğrulaması** (*01 · LLM'e giden maskeli metin* → *02 · Kullanıcıya dönen geri çözülmüş yanıt*), zaman aralığı/model filtreleri ve 10 saniyelik otomatik yenileme.
-- **4 Sekmeli İzleme Mimarisi:**
-  - **Genel Bakış:** Tek çerçeveli gösterge şeridi (KPI strip), tam genişlikli yatay istek bileşimi şeridi, son 30 isteğin sıralı gecikme/SLA grafiği, tehdit skoru histogramı, yatay PII tür dağılımı ve model bazlı kullanım tablosu.
-  - **Denetim Kaydı:** Durum filtresi, tehdit skoru görsel ilerleme çubuğu ve tek tıkla **CSV / JSON** dışa aktarma (prompt içeriği asla saklanmaz).
-  - **Model Performansı:** Yerel Ollama + NVIDIA GPU üzerinde çok modelli gecikme, prompt token maliyeti, üretim hızı (token/sn) ve VRAM karşılaştırması.
-  - **Benchmark:** Inbound kategori bazlı doğruluk ve Outbound PII varlık doğrulama grafikleri.
 
 ---
 
