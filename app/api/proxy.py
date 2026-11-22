@@ -56,6 +56,9 @@ class ChatResponse(BaseModel):
     total_latency_ms: float
     estimated_cost_usd: float = 0.0
     llm_mode: str = "simulated"
+    provider: str = "simulated"
+    resolved_model: str = ""
+    failover_triggered: bool = False
     tokens: TokenUsage
     masked_prompt: str = ""
     response: str
@@ -277,6 +280,9 @@ async def _guarded_completion(
         total_latency_ms=total_latency_ms,
         estimated_cost_usd=estimated_cost_usd,
         llm_mode=llm_result.get("mode", "simulated"),
+        provider=llm_result.get("provider", "simulated"),
+        resolved_model=llm_result.get("resolved_model", model),
+        failover_triggered=bool(llm_result.get("failover_triggered", False)),
         tokens=TokenUsage(
             prompt_tokens=llm_result["prompt_tokens"],
             completion_tokens=llm_result["completion_tokens"],
@@ -483,5 +489,20 @@ async def openai_compatible_completions(
             "gateway_overhead_ms": secure_res.gateway_overhead_ms,
             "estimated_cost_usd": secure_res.estimated_cost_usd,
             "llm_mode": secure_res.llm_mode,
+            "provider": secure_res.provider,
+            "resolved_model": secure_res.resolved_model,
+            "failover_triggered": secure_res.failover_triggered,
         },
+    }
+
+
+@router.get("/v1/providers")
+async def list_providers():
+    """Çoklu sağlayıcı yönlendirme (Multi-Provider Router) tablosunu ve aktif yedekleme durumunu döndürür."""
+    return {
+        "mode": llm_service.mode,
+        "default_model": llm_service.default_model,
+        "fallback_model": llm_service.fallback_model,
+        "failover_enabled": llm_service.enable_failover,
+        "providers": llm_service.get_providers_status(),
     }

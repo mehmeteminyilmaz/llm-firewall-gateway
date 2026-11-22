@@ -14,6 +14,9 @@ os.environ.setdefault("GATEWAY_API_KEYS", "")
 # Birim/entegrasyon testleri yerel .env dosyasındaki canlı LLM ayarlarından etkilenmesin
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["LLM_API_KEY"] = ""
+os.environ["GROQ_API_KEY"] = ""
+os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["OLLAMA_API_KEY"] = ""
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pytest  # noqa: E402

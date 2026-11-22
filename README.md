@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20SDK-Drop--In%20Proxy-412991.svg?logo=openai&logoColor=white)](#c-openai-sdk--langchain-drop-in-proxy-kullanımı-faz-5)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](#seçenek-1-docker-ile-tek-komutta-kurulum-önerilen)
 [![CI](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmeteminyilmaz/llm-firewall-gateway/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Pytest-37%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
+[![Tests](https://img.shields.io/badge/Pytest-41%20Passed-success.svg?logo=pytest&logoColor=white)](#3-otomatik-test-ve-regresyon-paketini-çalıştırma)
 [![Response Guard](https://img.shields.io/badge/Response%20Guard-Canary%20%26%20Leakage%20Defense-orange.svg)](#d-outbound-response-guardrail-canary-token--sızıntı-kalkanı)
 [![Multi-Model Bench](https://img.shields.io/badge/Multi--Model%20Bench-3%20LLMs%20%2B%20GPU-2563EB.svg)](#farklı-modellerde-performans-etkisi-gecikme-token-gpu)
 [![Security](https://img.shields.io/badge/Prompt%20Injection-100%25%20F1--Score-red.svg)](#8-akademik-metrikler-ve-benchmark-sonuçları-faz-4b)
@@ -177,6 +177,7 @@ flowchart TB
 ### C. Asenkron LLM Servisi, Maliyet Hesaplama ve OpenAI SDK Uyumluluğu
 - **Tam Çok-Turlu (Multi-Turn) OpenAI Drop-In Proxy (`/v1/chat/completions`):** Mevcut uygulamalar hiçbir kod değişikliği yapmadan sadece `base_url` parametresini Gateway adresine yönlendirerek güvenlik katmanlarından yararlanır. Tüm mesaj geçmişi (`system`, `user`, `assistant`) korunur ve mesajlar arası yer tutucu numaraları çakışmadan maskelenir.
 - **Streaming (SSE) ve Akış İçi Unmasking:** `stream=true` isteklerinde yanıt OpenAI `chat.completion.chunk` formatında akar. LLM bir yer tutucuyu parçalara bölse bile (`[TC_KI` + `MLIK_1]`) `StreamUnmasker` yarım kalan kuyruğu (en fazla 48 karakter) tamponlayıp tamamlanınca gerçek veriyle değiştirir; kasa akış başlar başlamaz imha edilir. Upstream erişilemezse akış başlamadan temiz `HTTP 502` döner.
+- **Akıllı Çoklu Sağlayıcı Yönlendiricisi (Smart Multi-Provider Router & Graceful Failover):** İstenen model adına göre hedef sağlayıcıyı otomatik seçer (`qwen2.5:1.5b` / `llama3.2:1b` / `gemma2:2b` → **Yerel GPU Ollama**; `llama-3.3-70b-versatile` → **Groq Cloud API**; `gpt-4o` / `gpt-4o-mini` → **OpenAI Cloud API**; `claude-3-5-sonnet` → **Anthropic Cloud API**). Bulut API anahtarı tanımlı değilse veya birincil sağlayıcı hata/zaman aşımı döndürürse (`HTTP 5xx`), isteği kesintisiz olarak aktif yedek sağlayıcıya (ör. yerel GPU üzerindeki `qwen2.5:1.5b` modeline) yönlendirir (`failover_triggered: true`).
 - **Gecikme ve Maliyet Ayrıştırma:** Ağ geçidi ek gecikmesi (`gateway_overhead_ms`) ile LLM bekleme süresi (`llm_latency_ms`) ayrıştırılır. Token kullanım verileri ve model bazlı (`gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `claude-3-5-sonnet`, `llama-3-70b`, `llama-3.3-70b-versatile`, yerel `qwen2.5:1.5b`, `llama3.2:1b`, `gemma2:2b`) **tahmini USD maliyeti (`estimated_cost_usd`)** anlık raporlanır.
 
 ### D. Outbound Response Guardrail (Canary Token & Sızıntı Kalkanı)
@@ -237,6 +238,10 @@ flowchart TB
   - Kontrastif Kosinüs Benzerliği (Adversarial Prototypes vs Hard-Negative Benign Anchors) + L2 Lojistik Regresyon modeli
   - Kademeli kısa-devre (`fast-path short-circuit`): Bilinen imzalar L1'de (~0.04 ms) elenir, yalnızca gri alandaki istemler L3 Semantik ML katmanına (~1.4 ms) düşer
   - 65 örnekli genişletilmiş benchmark üzerinde **Sadece Kural (%71.4 Recall)** vs **Hibrit Semantik ML (%100.0 Recall)** ablation analizi
+- [x] **Faz 9: Akıllı Çoklu Sağlayıcı Yönlendiricisi & Otomatik Yedekleme (Smart Multi-Provider Router & Failover)**
+  - Model adına göre dinamik sağlayıcı yönlendirmesi (`ollama-local`, `groq-cloud`, `openai-cloud`, `anthropic-cloud`)
+  - Bulut sağlayıcı anahtarı eksikliğinde veya `HTTP 5xx` kesintilerinde yerel GPU modeline otomatik kesintisiz geçiş (`Graceful Failover`)
+  - `/v1/providers` yönlendirme tablosu uç noktası ve Sohbet Denetim İzinde sağlayıcı/failover gösterimi
 
 ---
 
@@ -316,6 +321,7 @@ DEFAULT_MODEL=qwen2.5:1.5b
 |---|---|---|
 | `POST` | `/v1/chat/secure` | Detaylı güvenlik, gecikme, PII tür dağılımı ve USD maliyet telemetrisi dönen birincil kurumsal proxy uç noktası. |
 | `POST` | `/v1/chat/completions` | Standart **OpenAI SDK / LangChain** uyumlu çok-turlu (multi-turn) drop-in proxy uç noktası (`X-Guardrail-*` başlıklarıyla). `stream=true` ile SSE akışı desteklenir. |
+| `GET` | `/v1/providers` | Aktif çoklu sağlayıcı yönlendirme tablosunu (`ollama-local`, `groq-cloud`, `openai-cloud`, `anthropic-cloud`) ve yedekleme (`failover`) durumunu döndürür. |
 | `GET` | `/health` | Sistem sağlık durumu, aktif LLM modu (`simulated` / `live`), kasa oturum sayısı ve rate-limit yapılandırması. |
 | `GET` | `/docs` | Etkileşimli OpenAPI / Swagger dokümantasyonu. |
 
@@ -469,7 +475,7 @@ Detaylı kategori ve varlık kırılımları için otomatik üretilen [`BENCHMAR
 | **Reversible Unmasking & Zero-Leakage Başarımı** | $\%100.0$ | **%100.0** (Sıfır veri kaybı ve anında bellek imhası) |
 | **Inbound Guard Gecikmesi (Ort. / P95)** | $< 5.0\text{ ms}$ | **1.40 ms / 2.42 ms** (L1 kısa-devre: ~0.04 ms) |
 | **Outbound Guard PII + Vault Gecikmesi (Ort. / P95)** | $< 50.0\text{ ms}$ | **11.37 ms / 20.14 ms** |
-| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **37 / 37 Test Başarılı** |
+| **Otomatik Test Paketi (`pytest`)** | $\%100.0$ | **41 / 41 Test Başarılı** |
 
 ### Farklı Modellerde Performans Etkisi (Gecikme, Token, GPU)
 

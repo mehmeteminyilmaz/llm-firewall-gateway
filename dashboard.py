@@ -244,6 +244,7 @@ PRESETS = {
 
 MODELS = [
     "qwen2.5:1.5b", "llama3.2:1b", "gemma2:2b",
+    "llama-3.3-70b-versatile",
     "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "claude-3-5-sonnet", "llama-3-70b",
 ]
 PERIODS = {"Tümü": None, "Son 1 saat": 1, "Son 24 saat": 24, "Son 7 gün": 24 * 7}
@@ -394,6 +395,12 @@ def render_chat_turn(item: Dict[str, Any]) -> None:
         bot_html = ""
     elif code == 200 and is_dict:
         mode_tag = "CANLI LLM" if body.get("llm_mode") == "live" else "SİMÜLASYON"
+        prov = (body.get("provider") or "").upper()
+        res_mod = body.get("resolved_model") or model_name
+        failover = body.get("failover_triggered", False)
+        route_tag = f"{mode_tag} · {prov}" if prov and prov != "SIMULATED" else mode_tag
+        if failover and res_mod != model_name:
+            route_tag += f" ({model_name} → {res_mod})"
         pii_c = body.get("pii_detected_count", 0)
         gw_ms = body.get("gateway_overhead_ms", 0)
         llm_ms = body.get("llm_latency_ms", 0)
@@ -402,7 +409,7 @@ def render_chat_turn(item: Dict[str, Any]) -> None:
         shown_masked = re.sub(r"(\[[A-Z_]+_\d+\])", r"<code>\1</code>", masked_p)
         gw_html = (
             f'<div class="turn-gw" style="--gwc:{GREEN}">'
-            f'<div class="gw-head">GATEWAY DENETİM İZİ · HTTP 200 ({mode_tag}) · '
+            f'<div class="gw-head">GATEWAY DENETİM İZİ · HTTP 200 ({route_tag}) · '
             f'MASKELENEN PII: {pii_c} · GATEWAY: {gw_ms} ms · LLM: {llm_ms} ms · TOKEN: {tok}</div>'
             f'<div class="gw-sub"><b>LLM\'e İletilen Maskeli Metin:</b> {shown_masked}</div></div>'
         )
