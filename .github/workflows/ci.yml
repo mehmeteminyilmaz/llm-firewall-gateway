@@ -9,6 +9,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.fastembed_cache
     steps:
       - uses: actions/checkout@v4
 
@@ -17,15 +19,22 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Bağımlılıkları yükle
+      - name: Embedding model önbelleği (fastembed)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.fastembed_cache
+          key: fastembed-minilm-v1-${{ runner.os }}
+
+      - name: Bağımlılıkları yükle ve modelleri ısıt
         run: |
           pip install -r requirements.txt
           python -m spacy download en_core_web_sm
+          python -c "from fastembed import TextEmbedding; list(TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2').embed(['warmup']))"
 
       - name: Birim, entegrasyon ve güvenlik regresyon testleri
         run: pytest -q
 
-      - name: Akademik benchmark ve kalite kapısı (F1 >= 95, P95 gecikme SLA)
+      - name: Akademik benchmark ve kalite kapısı (F1 >= 92, Holdout F1 >= 80, P95 gecikme SLA)
         run: python benchmark.py
 
       - name: Benchmark raporunu kaydet
@@ -36,4 +45,3 @@ jobs:
           path: |
             BENCHMARK_REPORT.md
             benchmarks/latest_results.json
-
