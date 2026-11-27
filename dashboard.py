@@ -215,6 +215,7 @@ MODEL_BENCH_PATH = BASE_DIR / "benchmarks" / "model_results.json"
 GATEWAY_BASE = os.getenv("GATEWAY_URL", "http://127.0.0.1:8000").rstrip("/")
 GATEWAY_URL = GATEWAY_BASE + "/v1/chat/secure"
 GATEWAY_API_KEY = os.getenv("DASHBOARD_GATEWAY_API_KEY", "")
+ADMIN_API_KEY = os.getenv("DASHBOARD_ADMIN_API_KEY", "")
 
 STATUS_LABELS = {
     "SUCCESS": "Onaylandı",
@@ -851,49 +852,78 @@ with tab_bench:
             bdata = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
             inj = bdata["injection_benchmark"]
             pii = bdata["pii_benchmark"]
+            hld = bdata.get("unseen_holdout_benchmark")
+            hld_rule = bdata.get("unseen_holdout_rule_only")
+            leak = bdata.get("leakage_audit", {})
 
+            hld_cell = (
+                ("Görülmemiş Holdout F1", f"%{hld['f1_score']:.1f}", f"P %{hld['precision']:.0f} · R %{hld['recall']:.0f} · %0 sızıntı", "green")
+                if hld
+                else ("Karışıklık matrisi", f"{inj['tp']} / {inj['tn']}", f"TP / TN · FP {inj['fp']} · FN {inj['fn']}", "")
+            )
             strip([
-                ("Injection F1", f"%{inj['f1_score']:.1f}", f"P %{inj['precision']:.0f} · R %{inj['recall']:.0f}", "green"),
-                ("Karışıklık matrisi", f"{inj['tp']} / {inj['tn']}", f"TP / TN · FP {inj['fp']} · FN {inj['fn']}", ""),
+                ("Standart Injection F1", f"%{inj['f1_score']:.1f}", f"P %{inj['precision']:.0f} · R %{inj['recall']:.0f}", "green"),
+                hld_cell,
                 ("PII F1", f"%{pii['f1_score']:.1f}", f"{pii['tp']}/{pii['total_expected_entities']} varlık", "green"),
-                ("Inbound p95", f"{inj['p95_latency_ms']:.3f} ms", "SLA 5.0 ms", ""),
+                ("Inbound p95", f"{inj['p95_latency_ms']:.2f} ms", "CPU Transformer < 35 ms", ""),
                 ("Outbound p95", f"{pii['p95_latency_ms']:.2f} ms", "SLA 50 ms", ""),
             ])
-            st.markdown(f'<div class="hint">Son çalıştırma: {bdata.get("timestamp", "-")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="hint">Son çalıştırma: {bdata.get("timestamp", "-")} · L3 Model: <code>paraphrase-multilingual-MiniLM-L12-v2</code> (ONNX, anahtar kelime kapısı yok)</div>', unsafe_allow_html=True)
 
             rule_ab = bdata.get("ablation_rule_only")
             layers = inj.get("layer_breakdown", {})
             if rule_ab:
-                section("Ablation analizi · Sadece Kural Tabanlı (L1/L2) vs Hibrit Semantik ML (L1+L2+L3)")
+                section("İki kademeli Ablation analizi · Sadece Kural (L1/L2) vs Hibrit MiniLM-L12 Transformer")
                 ab_rows = [
                     {
-                        "Mimari Yapı": "Sadece Kural Tabanlı (L1 Regex + L2 Leksikal)",
-                        "Yakalama (TP / Toplam Saldırı)": f"{rule_ab['tp']} / {rule_ab['malicious_samples']}",
-                        "Kaçan Saldırı (FN)": rule_ab["fn"],
+                        "Veri Seti & Mimari": "Standart (65 Örnek) · Sadece Kural (L1/L2)",
+                        "TP / FN": f"{rule_ab['tp']} / {rule_ab['fn']}",
                         "Precision (%)": f"%{rule_ab['precision']:.1f}",
-                        "Recall / Duyarlılık (%)": f"%{rule_ab['recall']:.1f}",
+                        "Recall (%)": f"%{rule_ab['recall']:.1f}",
                         "F1-Skoru (%)": f"%{rule_ab['f1_score']:.1f}",
-                        "Ort. Gecikme (ms)": f"{rule_ab['avg_latency_ms']:.3f} ms",
-                        "P95 Gecikme (ms)": f"{rule_ab['p95_latency_ms']:.3f} ms",
+                        "Ort. Gecikme": f"{rule_ab['avg_latency_ms']:.2f} ms",
+                        "P95 Gecikme": f"{rule_ab['p95_latency_ms']:.2f} ms",
                     },
                     {
-                        "Mimari Yapı": "Hibrit Savunma (L1 Regex + L2 Leksikal + L3 Semantik ML)",
-                        "Yakalama (TP / Toplam Saldırı)": f"{inj['tp']} / {inj['malicious_samples']}",
-                        "Kaçan Saldırı (FN)": inj["fn"],
+                        "Veri Seti & Mimari": "Standart (65 Örnek) · Hibrit MiniLM-L12 (L1+L2+L3)",
+                        "TP / FN": f"{inj['tp']} / {inj['fn']}",
                         "Precision (%)": f"%{inj['precision']:.1f}",
-                        "Recall / Duyarlılık (%)": f"%{inj['recall']:.1f}",
+                        "Recall (%)": f"%{inj['recall']:.1f}",
                         "F1-Skoru (%)": f"%{inj['f1_score']:.1f}",
-                        "Ort. Gecikme (ms)": f"{inj['avg_latency_ms']:.3f} ms",
-                        "P95 Gecikme (ms)": f"{inj['p95_latency_ms']:.3f} ms",
+                        "Ort. Gecikme": f"{inj['avg_latency_ms']:.2f} ms",
+                        "P95 Gecikme": f"{inj['p95_latency_ms']:.2f} ms",
                     },
                 ]
+                if hld and hld_rule:
+                    ab_rows.extend([
+                        {
+                            "Veri Seti & Mimari": "Görülmemiş Holdout (40 Örnek) · Sadece Kural (L1/L2)",
+                            "TP / FN": f"{hld_rule['tp']} / {hld_rule['fn']}",
+                            "Precision (%)": f"%{hld_rule['precision']:.1f}",
+                            "Recall (%)": f"%{hld_rule['recall']:.1f}",
+                            "F1-Skoru (%)": f"%{hld_rule['f1_score']:.1f}",
+                            "Ort. Gecikme": f"{hld_rule['avg_latency_ms']:.2f} ms",
+                            "P95 Gecikme": f"{hld_rule['p95_latency_ms']:.2f} ms",
+                        },
+                        {
+                            "Veri Seti & Mimari": "Görülmemiş Holdout (40 Örnek) · Hibrit MiniLM-L12 (L1+L2+L3)",
+                            "TP / FN": f"{hld['tp']} / {hld['fn']}",
+                            "Precision (%)": f"%{hld['precision']:.1f}",
+                            "Recall (%)": f"%{hld['recall']:.1f}",
+                            "F1-Skoru (%)": f"%{hld['f1_score']:.1f}",
+                            "Ort. Gecikme": f"{hld['avg_latency_ms']:.2f} ms",
+                            "P95 Gecikme": f"{hld['p95_latency_ms']:.2f} ms",
+                        },
+                    ])
                 st.dataframe(pd.DataFrame(ab_rows), use_container_width=True, hide_index=True)
+                ds_leak = leak.get("dataset.json", {})
+                hld_leak = leak.get("unseen_holdout.json", {})
                 st.markdown(
-                    f'<div class="hint"><b>Kademeli Yakalama Dağılımı:</b> '
-                    f'Katman 1 (Deterministik Regex İmza): <b>{layers.get("L1_REGEX", 0)}</b> saldırı · '
-                    f'Katman 2 (Leksikal Yoğunluk): <b>{layers.get("L2_LEXICAL", 0)}</b> saldırı · '
-                    f'Katman 3 (TF-IDF Alt-Kelime Vektör + Kontrastif Kosinüs + Lojistik Regresyon): '
-                    f'<b>{layers.get("L3_SEMANTIC_ML", 0)}</b> kural-atlatan semantik saldırı.</div>',
+                    f'<div class="hint"><b>Kademeli Yakalama & Sızıntı Denetimi:</b> '
+                    f'L1 Regex: <b>{layers.get("L1_REGEX", 0)}</b> · L2 Leksikal: <b>{layers.get("L2_LEXICAL", 0)}</b> · '
+                    f'L3 MiniLM-L12 Transformer: <b>{layers.get("L3_SEMANTIC_ML", 0)}</b>. '
+                    f'Eğitim/test birebir örtüşmesi: Standart <code>{ds_leak.get("exact_matches", 0)}</code>, '
+                    f'Holdout <code>{hld_leak.get("exact_matches", 0)}</code> (maks. 3-gram Jaccard: {hld_leak.get("max_3gram_jaccard", 0)}).</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -931,8 +961,8 @@ with tab_bench:
                     show(fig, 360)
 
             st.markdown(
-                '<div class="hint">Değerlendirme kümesi 65 injection örneği (25 L1/L2 kural + 10 L3 semantik sıfır-regex saldırı + 30 meşru/zorlu negatif) '
-                've 19 PII varlığından oluşur.</div>',
+                '<div class="hint">İki kademeli değerlendirme: 65 örnekli Standart Benchmark + eğitim kümesiyle %0 örtüşen '
+                '40 örnekli Görülmemiş Holdout Seti ve 19 PII varlığı. Küçük örneklem nedeniyle sonuçlar yönlendirici doğrulamadır.</div>',
                 unsafe_allow_html=True,
             )
         except Exception as exc:
@@ -945,21 +975,30 @@ with tab_bench:
 # ---------------------------------------------------------------------------
 with tab_policy:
     _sec_counter["n"] = 0
-    headers_pol = {"Authorization": f"Bearer {GATEWAY_API_KEY}"} if GATEWAY_API_KEY else {}
+    headers_pol = {}
+    if ADMIN_API_KEY:
+        headers_pol["X-Admin-Key"] = ADMIN_API_KEY
+    elif GATEWAY_API_KEY:
+        headers_pol["Authorization"] = f"Bearer {GATEWAY_API_KEY}"
     pol_data = None
     prov_data = None
+    pol_auth_err = None
     try:
         with httpx.Client(timeout=2.5) as client:
             r_pol = client.get(GATEWAY_BASE + "/v1/policy", headers=headers_pol)
             if r_pol.status_code == 200:
                 pol_data = r_pol.json()
+            elif r_pol.status_code in (401, 403):
+                pol_auth_err = r_pol.status_code
             r_prov = client.get(GATEWAY_BASE + "/v1/providers", headers=headers_pol)
             if r_prov.status_code == 200:
                 prov_data = r_prov.json()
     except Exception:
         pass
 
-    if not pol_data:
+    if pol_auth_err:
+        st.warning(f"Politika yönetimi için yönetici yetkisi gerekli (HTTP {pol_auth_err}). `DASHBOARD_ADMIN_API_KEY` ortam değişkenini `ADMIN_API_KEY` ile eşleşecek şekilde ayarlayın.")
+    elif not pol_data:
         st.info("Canlı güvenlik politikasını yönetmek için Gateway sunucusunun (port 8000) açık olması gerekir.")
     else:
         cur_thresh = float(pol_data.get("injection_threshold", 0.70))
@@ -971,7 +1010,7 @@ with tab_policy:
 
         strip([
             ("Tehdit engelleme eşiği", f"{cur_thresh:.2f}", "HTTP 403 kesme sınırı", ""),
-            ("Katman 3 Semantik ML", "AKTİF" if cur_sem else "KAPALI", "TF-IDF + Kosinüs + Lojistik", "green" if cur_sem else "red"),
+            ("Katman 3 Semantik ML", "AKTİF" if cur_sem else "KAPALI", "MiniLM-L12 Transformer (384d)", "green" if cur_sem else "red"),
             ("Aktif PII kategorisi", f"{len(cur_pii)} / {len(avail_pii)}", "zero-leakage maskeleme", ""),
             ("Kurumsal kara liste", f"{len(cur_bl)} terim", "Katman 0 (L0) engeli", "red" if cur_bl else ""),
         ])
