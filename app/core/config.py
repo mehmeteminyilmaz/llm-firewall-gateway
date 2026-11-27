@@ -20,11 +20,12 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
 
-    # Upstream LLM
+    # Upstream LLM & Veri Yerleşimi (Data Residency)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     UPSTREAM_LLM_URL: str = os.getenv("UPSTREAM_LLM_URL", "https://api.openai.com/v1/chat/completions")
     DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gpt-3.5-turbo")
     UPSTREAM_TIMEOUT_SEC: float = float(os.getenv("UPSTREAM_TIMEOUT_SEC", "30"))
+    ALLOW_CLOUD_FALLBACK: bool = os.getenv("ALLOW_CLOUD_FALLBACK", "false").lower() in ("true", "1", "yes")
 
     # Inbound Guard
     INJECTION_THRESHOLD: float = float(os.getenv("INJECTION_THRESHOLD", "0.70"))
@@ -34,9 +35,12 @@ class Settings:
     RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "30"))
     RATE_LIMIT_WINDOW_SEC: int = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
-    # Gateway kimlik doÄŸrulamasÄ±: boÅŸ bÄ±rakÄ±lÄ±rsa kapalÄ±dÄ±r (geliÅŸtirme modu).
-    # Ã–rn: GATEWAY_API_KEYS=team-a-key,team-b-key
+    # Gateway kimlik doğrulaması: boş bırakılırsa kapalıdır (geliştirme modu).
+    # Örn: GATEWAY_API_KEYS=team-a-key,team-b-key
     GATEWAY_API_KEYS: List[str] = _csv(os.getenv("GATEWAY_API_KEYS", ""))
+
+    # Politika yönetimi (RBAC): boşsa ve GATEWAY_API_KEYS tanımlıysa politika uç noktaları kapalı tutulur.
+    ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "").strip()
 
 
 settings = Settings()

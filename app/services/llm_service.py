@@ -66,6 +66,8 @@ class LLMService:
         self.fallback_model = os.getenv("FALLBACK_MODEL", "qwen2.5:1.5b")
         self.timeout = float(os.getenv("UPSTREAM_TIMEOUT_SEC", "30"))
         self.enable_failover = os.getenv("ENABLE_PROVIDER_FALLBACK", "true").lower() in ("true", "1", "yes")
+        # Veri yerleşimi koruması: yerel GPU modeli seçildiğinde açık onay olmadan buluta düşme
+        self.allow_cloud_fallback = os.getenv("ALLOW_CLOUD_FALLBACK", "false").lower() in ("true", "1", "yes")
 
         # Sağlayıcı bazlı anahtar ve uç nokta çözümlemesi
         is_ollama_mode = (raw_openai.lower() == "ollama") or ("11434" in self.api_url)
@@ -175,6 +177,11 @@ class LLMService:
         if self.openai_key:
             fallback_candidates.append(("openai-cloud", self.openai_key, self.openai_url, "gpt-4o-mini"))
 
+        # Veri yerleşimi (data residency) kuralı: istemci özellikle yerel GPU (ollama-local)
+        # seçtiyse ve ALLOW_CLOUD_FALLBACK kapalıysa bulut sağlayıcılar yedek aday olamaz.
+        if target_provider == "ollama-local" and not self.allow_cloud_fallback:
+            fallback_candidates = [c for c in fallback_candidates if c[0] == "ollama-local"]
+
         # 1. Hedef sağlayıcının anahtarı mevcutsa birincil rota olarak kullan
         if key:
             fb_route = None
@@ -198,7 +205,7 @@ class LLMService:
                 "fallback_route": fb_route,
             }
 
-        # 2. Hedef sağlayıcının anahtarı yoksa ancak başka bir canlı sağlayıcı (ör. Yerel Ollama) açıksa
+        # 2. Hedef sağlayıcının anahtarı yoksa ancak başka bir canlı sağlayıcı açıksa
         if self.enable_failover and fallback_candidates:
             fb_prov, fb_key, fb_url, fb_mod = fallback_candidates[0]
             return {
@@ -211,7 +218,19 @@ class LLMService:
                 "fallback_route": None,
             }
 
-        # 3. Genel api_key / api_url fallback
+        # 3. Hedef sağlayıcı için anahtar yok ve uygun yedek rota da yoksa (ör. yerel seçildi ama Ollama kapalı)
+        if target_provider == "ollama-local" and not self.allow_cloud_fallback:
+            return {
+                "provider": "unconfigured",
+                "api_url": url,
+                "api_key": "",
+                "requested_model": model,
+                "resolved_model": model,
+                "failover_triggered": False,
+                "fallback_route": None,
+            }
+
+        # Genel api_key / api_url fallback (yalnızca tek genel URL yapılandırmaları için)
         return {
             "provider": target_provider,
             "api_url": self.api_url,
@@ -245,7 +264,7 @@ class LLMService:
         selected_model = route["resolved_model"]
         messages = messages or []
 
-        if self.mode == "simulated" or not route["api_key"]:
+        if self.mode == "simulated":
             last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
             content = f"Sistem güvenli yanıtı: Talebiniz işlendi. Referans: {last_user}"
             for i in range(0, len(content), 8):
@@ -257,6 +276,11 @@ class LLMService:
                 "completion_tokens": 12,
             }
             return
+
+        if not route["api_key"]:
+            raise UpstreamLLMError(
+                f"Provider for model '{selected_model}' is not configured and cloud fallback is disabled."
+            )
 
         headers = {"Authorization": f"Bearer {route['api_key']}", "Content-Type": "application/json"}
         payload = {
@@ -333,7 +357,7 @@ class LLMService:
             messages = [{"role": "user", "content": prompt or ""}]
 
         # Gerçek API anahtarı tanımlanmamışsa fallback simülasyonu çalışır
-        if self.mode == "simulated" or not route["api_key"]:
+        if self.mode == "simulated":
             last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
             prompt_tokens = sum(len(m["content"].split()) for m in messages)
             completion_tokens = 12
@@ -349,6 +373,11 @@ class LLMService:
                 "failover_triggered": False,
                 "mode": "simulated",
             }
+
+        if not route["api_key"]:
+            raise UpstreamLLMError(
+                f"Provider for model '{requested_model}' is not configured and cloud fallback is disabled."
+            )
 
         try:
             data = await self._post_completion(
@@ -384,7 +413,7 @@ class LLMService:
             "prompt_tokens": p_tokens,
             "completion_tokens": c_tokens,
             "total_tokens": usage.get("total_tokens", p_tokens + c_tokens),
-            "estimated_cost_usd": self.calculate_cost(p_tokens, c_tokens, requested_model),
+            "estimated_cost_usd": self.calculate_cost(p_tokens, c_tokens, resolved_model),
             "model": requested_model,
             "resolved_model": resolved_model,
             "provider": provider,

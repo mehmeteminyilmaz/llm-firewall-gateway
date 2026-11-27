@@ -101,7 +101,74 @@ def test_providers_endpoint_returns_routing_table():
     assert resp.status_code == 200
     body = resp.json()
     assert "providers" in body
+    assert "allow_cloud_fallback" in body
     names = [p["provider"] for p in body["providers"]]
     assert "ollama-local" in names
     assert "groq-cloud" in names
     assert "openai-cloud" in names
+
+
+def test_failover_cost_uses_resolved_model_pricing(monkeypatch):
+    """Failover sırasında maliyet, istenen modele (gpt-4o) göre değil gerçekte çalışan modele (qwen2.5:1.5b) göre hesaplanmalı."""
+    monkeypatch.setenv("OPENAI_API_KEY", "ollama")
+    monkeypatch.setenv("UPSTREAM_LLM_URL", "http://127.0.0.1:11434/v1/chat/completions")
+    monkeypatch.setenv("FALLBACK_MODEL", "qwen2.5:1.5b")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+
+    svc = LLMService()
+
+    async def mock_post(api_url, api_key, model_name, messages, temperature):
+        return {
+            "choices": [{"message": {"content": "Tamamlandı."}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 1000, "total_tokens": 2000},
+        }
+
+    monkeypatch.setattr(svc, "_post_completion", mock_post)
+    monkeypatch.setattr(proxy, "llm_service", svc)
+
+    resp = client.post("/v1/chat/secure", json={"prompt": "Kısa bir merhaba de.", "model": "gpt-4o"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resolved_model"] == "qwen2.5:1.5b"
+    # qwen2.5:1.5b fiyatı: 0.0001 + 0.0002 = 0.0003 (gpt-4o olsa 0.0125 olurdu)
+    assert data["estimated_cost_usd"] == 0.0003
+
+
+def test_on_premise_model_does_not_failover_to_cloud_unless_opted_in(monkeypatch):
+    """
+    Veri yerleşimi (data residency) koruması: Kullanıcı yerel GPU modelini (qwen2.5:1.5b) seçtiğinde
+    ALLOW_CLOUD_FALLBACK=false iken buluta (groq-cloud) sessizce geçiş yapmamalı (HTTP 502).
+    Yalnızca ALLOW_CLOUD_FALLBACK=true ile açık onay verilince buluta geçmeli.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "ollama")
+    monkeypatch.setenv("UPSTREAM_LLM_URL", "http://127.0.0.1:11434/v1/chat/completions")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_live_test_key_123456")
+    monkeypatch.setenv("ALLOW_CLOUD_FALLBACK", "false")
+
+    svc_strict = LLMService()
+    assert svc_strict.allow_cloud_fallback is False
+
+    async def fail_ollama(api_url, api_key, model_name, messages, temperature):
+        if "11434" in api_url:
+            raise UpstreamLLMError("Ollama offline")
+        return {
+            "choices": [{"message": {"content": "Bulut yanıtı."}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(svc_strict, "_post_completion", fail_ollama)
+    monkeypatch.setattr(proxy, "llm_service", svc_strict)
+
+    r_blocked = client.post("/v1/chat/secure", json={"prompt": "Merhaba", "model": "qwen2.5:1.5b"})
+    assert r_blocked.status_code == 502
+
+    # Şimdi açık onay (ALLOW_CLOUD_FALLBACK=true) ile test et
+    monkeypatch.setenv("ALLOW_CLOUD_FALLBACK", "true")
+    svc_optin = LLMService()
+    monkeypatch.setattr(svc_optin, "_post_completion", fail_ollama)
+    monkeypatch.setattr(proxy, "llm_service", svc_optin)
+
+    r_ok = client.post("/v1/chat/secure", json={"prompt": "Merhaba", "model": "qwen2.5:1.5b"})
+    assert r_ok.status_code == 200
+    assert r_ok.json()["failover_triggered"] is True
+    assert r_ok.json()["provider"] == "groq-cloud-fallback"

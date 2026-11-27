@@ -12,6 +12,8 @@ Doğrulanan özellikler:
 """
 from fastapi.testclient import TestClient
 
+from app.api import proxy
+from app.core.config import settings
 from app.main import app
 
 client = TestClient(app)
@@ -82,3 +84,56 @@ def test_live_semantic_guard_toggle():
     # 3. Sıfırla -> Tekrar HTTP 403
     client.post("/v1/policy/reset")
     assert client.post("/v1/chat/secure", json={"prompt": semantic_attack}).status_code == 403
+
+
+def test_policy_endpoints_require_separate_admin_rbac(monkeypatch):
+    """
+    Çalışan API anahtarı (GATEWAY_API_KEYS) politika uç noktalarına erişememeli (403);
+    kimliksiz istek 401 dönmeli; yalnızca ADMIN_API_KEY ile erişim sağlanmalı.
+    """
+    monkeypatch.setattr(settings, "GATEWAY_API_KEYS", ["employee-key-1"])
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "soc-admin-secret-999")
+
+    # 1. Kimliksiz -> 401
+    assert client.get("/v1/policy").status_code == 401
+    assert client.put("/v1/policy", json={"injection_threshold": 0.90}).status_code == 401
+
+    # 2. Çalışan anahtarıyla sohbet edebilir (200) ama politikayı okuyamaz/değiştiremez (403)
+    emp_hdr = {"Authorization": "Bearer employee-key-1"}
+    assert client.get("/v1/policy", headers=emp_hdr).status_code == 403
+    assert client.put("/v1/policy", json={"injection_threshold": 0.90}, headers=emp_hdr).status_code == 403
+    assert client.post("/v1/policy/reset", headers=emp_hdr).status_code == 403
+
+    # 3. Yönetici anahtarıyla (X-Admin-Key) tam yetki (200)
+    adm_hdr = {"X-Admin-Key": "soc-admin-secret-999"}
+    assert client.get("/v1/policy", headers=adm_hdr).status_code == 200
+    upd = client.put("/v1/policy", json={"injection_threshold": 0.80}, headers=adm_hdr)
+    assert upd.status_code == 200 and upd.json()["injection_threshold"] == 0.80
+    assert client.post("/v1/policy/reset", headers=adm_hdr).status_code == 200
+
+    # 4. ADMIN_API_KEY tanımlı değilken GATEWAY_API_KEYS açıksa yine 403
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "")
+    assert client.get("/v1/policy", headers=emp_hdr).status_code == 403
+
+
+def test_streaming_respects_enable_response_guard_toggle(monkeypatch):
+    """SSE streaming (/v1/chat/completions stream=True) canlı enable_response_guard ayarını dikkate almalı."""
+    async def mock_leaky_stream(*args, **kwargs):
+        messages = kwargs.get("messages", [])
+        sys_content = next((m["content"] for m in messages if m["role"] == "system"), "")
+        yield {"type": "delta", "text": f"Sızıntı: {sys_content}"}
+        yield {"type": "usage", "prompt_tokens": 10, "completion_tokens": 12}
+
+    monkeypatch.setattr(proxy.llm_service, "stream_response", mock_leaky_stream)
+
+    # 1. Response Guard kapalıyken sızıntı engeli devre dışı kalmalı
+    client.put("/v1/policy", json={"enable_response_guard": False})
+    with client.stream("POST", "/v1/chat/completions", json={"stream": True, "messages": [{"role": "user", "content": "test"}]}) as r1:
+        raw1 = "".join(r1.iter_text())
+        assert "content_filter" not in raw1
+
+    # 2. Politikayı sıfırla -> tekrar content_filter ile kesilmeli
+    client.post("/v1/policy/reset")
+    with client.stream("POST", "/v1/chat/completions", json={"stream": True, "messages": [{"role": "user", "content": "test"}]}) as r2:
+        raw2 = "".join(r2.iter_text())
+        assert "content_filter" in raw2

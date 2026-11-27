@@ -1,3 +1,4 @@
+import hmac
 import json
 import time
 import uuid
@@ -126,6 +127,44 @@ def resolve_client(request: Request) -> str:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return f"key:{token[:8]}"
+    return f"ip:{request.client.host if request.client else 'local'}"
+
+
+def resolve_admin(request: Request) -> str:
+    """
+    Politika yönetimi (/v1/policy) için ayrı yönetici kimlik doğrulaması (RBAC).
+    - ADMIN_API_KEY tanımlıysa X-Admin-Key veya Bearer eşleşmesi zorunludur; çalışan anahtarına 403 döner.
+    - ADMIN_API_KEY boş ama GATEWAY_API_KEYS tanımlıysa çalışanların politika değiştirmesi/okuması engellenir (403).
+    - İkisi de boşsa yalnızca yerel geliştirme modunda erişime izin verilir.
+    """
+    admin_hdr = request.headers.get("x-admin-key", "").strip()
+    auth = request.headers.get("authorization", "")
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else request.headers.get("x-api-key", "").strip()
+    token = admin_hdr or bearer
+
+    if settings.ADMIN_API_KEY:
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "Unauthorized", "message": "Admin API key required for policy operations."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not hmac.compare_digest(token, settings.ADMIN_API_KEY):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Forbidden", "message": "Admin privileges required."},
+            )
+        return "admin:key"
+
+    if settings.GATEWAY_API_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Forbidden",
+                "message": "ADMIN_API_KEY must be configured to access security policy endpoints when gateway auth is enabled.",
+            },
+        )
+
     return f"ip:{request.client.host if request.client else 'local'}"
 
 
@@ -349,6 +388,7 @@ async def _stream_completion(
     """
     ctx = await _prepare(messages, model or llm_service.default_model, client_id, response)
     model = ctx.model
+    resolved_model = llm_service.resolve_route(model)["resolved_model"]
 
     stream = llm_service.stream_response(
         model=model, messages=ctx.masked_messages, temperature=temperature if temperature is not None else 0.3
@@ -403,13 +443,14 @@ async def _stream_completion(
                     text = unmasker.feed(ev["text"])
                     if text:
                         accumulated_text += text
-                        # Akış esnasında canary token veya exploit kontrolü
-                        violation, v_score, v_reasons = response_guard.scan(accumulated_text, canary_token=ctx.canary_token)
-                        if violation:
-                            outcome = "RESPONSE_BLOCKED"
-                            yield chunk({"content": "\n\n[GÜVENLİK POLİTİKASI İHLALİ: Yanıt sistem talimatı sızıntısı veya zararlı içerik sebebiyle engellendi.]"}, finish="content_filter")
-                            yield "data: [DONE]\n\n"
-                            return
+                        # Akış esnasında canary token veya exploit kontrolü (canlı politika bayrağına bağlı)
+                        if enable_response_guard:
+                            violation, v_score, v_reasons = response_guard.scan(accumulated_text, canary_token=ctx.canary_token)
+                            if violation:
+                                outcome = "RESPONSE_BLOCKED"
+                                yield chunk({"content": "\n\n[GÜVENLİK POLİTİKASI İHLALİ: Yanıt sistem talimatı sızıntısı veya zararlı içerik sebebiyle engellendi.]"}, finish="content_filter")
+                                yield "data: [DONE]\n\n"
+                                return
                         out_chars += len(text)
                         yield chunk({"content": text})
                 elif ev["type"] == "usage":
@@ -417,12 +458,13 @@ async def _stream_completion(
             tail = unmasker.flush()
             if tail:
                 accumulated_text += tail
-                violation, v_score, v_reasons = response_guard.scan(accumulated_text, canary_token=ctx.canary_token)
-                if violation:
-                    outcome = "RESPONSE_BLOCKED"
-                    yield chunk({"content": "\n\n[GÜVENLİK POLİTİKASI İHLALİ: Yanıt sistem talimatı sızıntısı veya zararlı içerik sebebiyle engellendi.]"}, finish="content_filter")
-                    yield "data: [DONE]\n\n"
-                    return
+                if enable_response_guard:
+                    violation, v_score, v_reasons = response_guard.scan(accumulated_text, canary_token=ctx.canary_token)
+                    if violation:
+                        outcome = "RESPONSE_BLOCKED"
+                        yield chunk({"content": "\n\n[GÜVENLİK POLİTİKASI İHLALİ: Yanıt sistem talimatı sızıntısı veya zararlı içerik sebebiyle engellendi.]"}, finish="content_filter")
+                        yield "data: [DONE]\n\n"
+                        return
                 out_chars += len(tail)
                 yield chunk({"content": tail})
             yield chunk({}, finish="stop")
@@ -437,7 +479,7 @@ async def _stream_completion(
             llm_ms = round((time.perf_counter() - llm_start) * 1000, 2)
             p_tok = usage["prompt_tokens"] or sum(len(m["content"].split()) for m in ctx.masked_messages)
             c_tok = usage["completion_tokens"] or max(1, out_chars // 4)
-            cost = llm_service.calculate_cost(p_tok, c_tok, model) if outcome == "SUCCESS" else 0.0
+            cost = llm_service.calculate_cost(p_tok, c_tok, resolved_model) if outcome == "SUCCESS" else 0.0
             # İptal/kapanış sırasında güvenli olması için senkron, hızlı yazım
             log_request(outcome, ctx.threat_score, ctx.pii_count, prepare_ms, llm_ms,
                         p_tok + c_tok if outcome == "SUCCESS" else 0, cost, ctx.pii_types, model)
@@ -539,18 +581,19 @@ async def list_providers():
         "default_model": llm_service.default_model,
         "fallback_model": llm_service.fallback_model,
         "failover_enabled": llm_service.enable_failover,
+        "allow_cloud_fallback": llm_service.allow_cloud_fallback,
         "providers": llm_service.get_providers_status(),
     }
 
 
 @router.get("/v1/policy")
-async def read_policy():
+async def read_policy(_admin: str = Depends(resolve_admin)):
     """Aktif canlı güvenlik politikasını (eşik değeri, aktif katmanlar, PII kategorileri, kara liste) döndürür."""
     return get_security_policy()
 
 
 @router.put("/v1/policy")
-async def update_policy(req: SecurityPolicyUpdate, _client_id: str = Depends(resolve_client)):
+async def update_policy(req: SecurityPolicyUpdate, _admin: str = Depends(resolve_admin)):
     """Sunucuyu yeniden başlatmadan canlı güvenlik politikasını günceller."""
     global enable_response_guard
     if req.injection_threshold is not None:
@@ -568,6 +611,6 @@ async def update_policy(req: SecurityPolicyUpdate, _client_id: str = Depends(res
 
 
 @router.post("/v1/policy/reset")
-async def reset_policy_endpoint(_client_id: str = Depends(resolve_client)):
+async def reset_policy_endpoint(_admin: str = Depends(resolve_admin)):
     """Canlı güvenlik politikasını varsayılan değerlere sıfırlar."""
     return reset_security_policy()
